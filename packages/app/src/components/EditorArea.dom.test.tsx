@@ -312,8 +312,8 @@ const { requestDocPanelTab } = await import('./doc-panel-events');
 
 function agentsPanelProps(visible: boolean) {
   return visible
-    ? ({ agentsVisible: true, activeTab: 'agents' as PanelTab })
-    : ({ agentsVisible: false, activeTab: 'timeline' as PanelTab });
+    ? { agentsVisible: true, activeTab: 'agents' as PanelTab }
+    : { agentsVisible: false, activeTab: 'timeline' as PanelTab };
 }
 
 function renderEditorArea() {
@@ -435,7 +435,6 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
 
   const MOCK_GROUP_PX = 1360;
   const pctOf = (px: number) => (px / MOCK_GROUP_PX) * 100;
-  const getDocPanelHandle = () => screen.getByTestId('resizable-handle');
 
   beforeEach(() => {
     cleanup();
@@ -875,7 +874,6 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
 
     expect(groupSetLayoutCalls).toHaveLength(0);
   });
-
 });
 
 describe('EditorArea agents mount in doc panel', () => {

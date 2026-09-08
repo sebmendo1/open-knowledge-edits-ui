@@ -88,6 +88,27 @@ function buildDeletedWidget(
   return host;
 }
 
+function isTableFamilyType(typeName: string): boolean {
+  return typeName === 'table' || typeName.startsWith('table');
+}
+
+function isGutterSafeChipPos(doc: PMNode, pos: number): boolean {
+  if (pos < 0 || pos > doc.content.size) return false;
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    if (isTableFamilyType($pos.node(depth).type.name)) return false;
+  }
+  const nodeAfter = $pos.nodeAfter;
+  if (nodeAfter !== null && isTableFamilyType(nodeAfter.type.name)) return false;
+  return true;
+}
+
+function canApplyNodeDecoration(doc: PMNode, from: number, to: number): boolean {
+  const node = doc.nodeAt(from);
+  if (node === null) return false;
+  return from + node.nodeSize === to;
+}
+
 export interface ReviewDecorationOptions {
   bindings: readonly ReviewChangeBinding[];
   selectedChangeId: string | null;
@@ -105,18 +126,6 @@ export function buildDiffDecorations(
   const serializer = DOMSerializer.fromSchema(schema);
   const decorations: Decoration[] = [];
   const selectedChangeId = review?.selectedChangeId ?? null;
-
-  for (const [changeId, pos] of review?.chipPositions ?? []) {
-    const binding = review?.bindings.find((b) => b.id === changeId);
-    if (binding === undefined) continue;
-    decorations.push(
-      Decoration.widget(
-        pos,
-        () => buildMarginChipWidget(binding.chip, changeId, changeId === selectedChangeId),
-        { side: -1, ignoreSelection: true, marks: [], key: `chip-${changeId}` },
-      ),
-    );
-  }
 
   for (const mark of markChanges) {
     const slice = beforeDoc.slice(mark.fromA, mark.toA);
@@ -152,7 +161,7 @@ export function buildDiffDecorations(
 
   for (const change of changes) {
     const changeId = bindingIdForPos(review, change.fromB);
-    if (change.toB > change.fromB) {
+    if (change.toB > change.fromB && canApplyNodeDecoration(afterDoc, change.fromB, change.toB)) {
       decorations.push(
         Decoration.node(change.fromB, change.toB, {
           class: reviewClass('ok-diff-ins-block', changeId, selectedChangeId),
@@ -175,6 +184,18 @@ export function buildDiffDecorations(
         ),
       );
     }
+  }
+
+  for (const [changeId, pos] of review?.chipPositions ?? []) {
+    const binding = review?.bindings.find((b) => b.id === changeId);
+    if (binding === undefined || !isGutterSafeChipPos(afterDoc, pos)) continue;
+    decorations.push(
+      Decoration.widget(
+        pos,
+        () => buildMarginChipWidget(binding.chip, changeId, changeId === selectedChangeId),
+        { side: -1, ignoreSelection: true, marks: [], key: `chip-${changeId}` },
+      ),
+    );
   }
 
   return DecorationSet.create(afterDoc, decorations);

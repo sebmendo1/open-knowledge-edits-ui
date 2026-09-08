@@ -221,7 +221,7 @@ describe('DocPanel — Problems badge', () => {
 });
 
 describe('DocPanel — document review tab routing', () => {
-  test('outline tab shows the change index while review is active', () => {
+  test('outline tab stays on outline during review without a stacked change index', () => {
     reviewActiveValue = true;
     reviewChangesValue = [
       {
@@ -236,14 +236,14 @@ describe('DocPanel — document review tab routing', () => {
       },
     ];
     renderPanel('outline');
-    expect(screen.getByTestId('change-index-panel')).toBeTruthy();
-    expect(screen.queryByTestId('outline-panel')).toBeNull();
+    expect(screen.queryByTestId('change-index-panel')).toBeNull();
+    expect(screen.getByTestId('outline-panel')).toBeTruthy();
     expect(screen.getByTestId('doc-panel-switcher').textContent?.toLowerCase()).toContain(
-      'changes',
+      'outline',
     );
   });
 
-  test('non-outline tabs keep their original panels during review', () => {
+  test('non-outline tabs keep their original panels during review without a stacked change index', () => {
     reviewActiveValue = true;
     reviewChangesValue = [
       {
@@ -259,6 +259,25 @@ describe('DocPanel — document review tab routing', () => {
     ];
     renderPanel('timeline');
     expect(screen.getByTestId('timeline-panel')).toBeTruthy();
+    expect(screen.queryByTestId('change-index-panel')).toBeNull();
+  });
+
+  test('agents tab keeps its slot during review without a stacked change index', () => {
+    reviewActiveValue = true;
+    reviewChangesValue = [
+      {
+        id: 'pricing-table',
+        time: '10:42',
+        section: 'Pricing tiers',
+        summary: 'Replaced the pricing table — 4 tiers → 3',
+        kind: 'add',
+        additions: 4,
+        deletions: 5,
+        anchorIndex: 0,
+      },
+    ];
+    renderPanel('agents', <div data-testid="agents-slot" />);
+    expect(screen.getByTestId('agents-slot')).toBeTruthy();
     expect(screen.queryByTestId('change-index-panel')).toBeNull();
   });
 });

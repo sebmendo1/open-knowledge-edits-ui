@@ -6431,7 +6431,6 @@ html.electron-mode [data-slot="sidebar-inner"] {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 20%, transparent);
 }
 
-
 /* Mermaid WYSIWYG canvas (`mermaid-wysiwyg` package). The package injects its
    own `<style data-mw>` at runtime with `--mw-*` custom-property hooks for all
    interaction chrome (selection glow, popovers, in-place editors, plus-menus).

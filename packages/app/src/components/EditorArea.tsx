@@ -74,6 +74,7 @@ import {
   openDocumentReviewDemo,
   useDocumentReviewView,
 } from '@/lib/document-review/store';
+import { readSourceBody } from '@/lib/document-review/use-live-doc-body';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
@@ -324,10 +325,25 @@ function EditorAreaInner({
   useEffect(() => {
     if (activeDocName === null || !isBillingInvoicesDemoDoc(activeDocName)) return;
     if (documentReview?.source.docName === activeDocName) return;
-    openDocumentReviewDemo(activeDocName);
-  }, [activeDocName, documentReview?.source.docName]);
+    openDocumentReviewDemo(activeDocName, readSourceBody(activeProvider));
+  }, [activeDocName, activeProvider, documentReview?.source.docName]);
+  useEffect(() => {
+    if (!activeProvider || activeDocName === null) return;
+    if (!isBillingInvoicesDemoDoc(activeDocName)) return;
+    const docName = activeDocName;
+    const provider = activeProvider;
+    const ytext = provider.document.getText('source');
+    function onLiveEdit(): void {
+      openDocumentReviewDemo(docName, readSourceBody(provider));
+    }
+    ytext.observe(onLiveEdit);
+    return () => {
+      ytext.unobserve(onLiveEdit);
+    };
+  }, [activeProvider, activeDocName]);
   const documentReviewDoc = documentReview?.source.docName ?? null;
   const documentReviewNavTargetRef = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed only on the review doc so this starts navigation when a review opens for another file and never fights a manual nav-away
   useEffect(() => {
     if (documentReviewDoc == null) {
       documentReviewNavTargetRef.current = null;

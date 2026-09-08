@@ -1,5 +1,6 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { DocumentReviewChange } from '@/lib/document-review/types';
+import type { SpanChange } from '@/lib/rendered-diff/block-diff';
 import type { ReviewChangeBinding, ReviewMarginChip } from '@/lib/rendered-diff/diff-decorations';
 
 function headingPos(afterDoc: PMNode, text: string): number | null {
@@ -28,12 +29,12 @@ function paragraphPosContaining(afterDoc: PMNode, needle: string): number | null
   return found;
 }
 
-function firstTablePos(afterDoc: PMNode): number | null {
+function posAfterFirstTable(afterDoc: PMNode): number | null {
   let found: number | null = null;
   afterDoc.descendants((node, pos) => {
     if (found !== null) return false;
     if (node.type.name === 'table') {
-      found = pos;
+      found = pos + node.nodeSize;
       return false;
     }
     return true;
@@ -52,7 +53,7 @@ function anchorPosForChange(afterDoc: PMNode, change: DocumentReviewChange): num
     case 'pricing-intro':
       return paragraphPosContaining(afterDoc, 'There are three plans');
     case 'pricing-table':
-      return firstTablePos(afterDoc);
+      return posAfterFirstTable(afterDoc);
     case 'customers-add':
       return headingPos(afterDoc, 'Customers');
     case 'open-questions':
@@ -60,6 +61,17 @@ function anchorPosForChange(afterDoc: PMNode, change: DocumentReviewChange): num
     default:
       return headingPos(afterDoc, change.section);
   }
+}
+
+export function isTableFamilyType(typeName: string): boolean {
+  return typeName === 'table' || typeName.startsWith('table');
+}
+
+export function nodeTypeAtPos(doc: PMNode, pos: number): string | null {
+  if (pos < 0 || pos > doc.content.size) return null;
+  const node = doc.nodeAt(pos);
+  if (node !== null) return node.type.name;
+  return doc.resolve(pos).parent.type.name;
 }
 
 export function demoReviewBindings(
@@ -77,6 +89,60 @@ export function demoReviewBindings(
   }
 
   return { bindings, chipPositions };
+}
+
+export function spanReviewBindings(
+  afterDoc: PMNode,
+  spanChanges: readonly SpanChange[],
+): {
+  bindings: ReviewChangeBinding[];
+  chipPositions: Map<string, number>;
+  changes: DocumentReviewChange[];
+} {
+  const bindings: ReviewChangeBinding[] = [];
+  const chipPositions = new Map<string, number>();
+  const changes: DocumentReviewChange[] = [];
+
+  spanChanges.forEach((span, index) => {
+    const inserted = span.toB > span.fromB;
+    const deleted = span.toA > span.fromA;
+    const kind: DocumentReviewChange['kind'] =
+      inserted && !deleted ? 'add' : !inserted && deleted ? 'remove' : 'replace';
+    const id = `span-${index}-${span.fromB}`;
+    bindings.push({ id, chip: chipForKind(kind) });
+    chipPositions.set(id, span.fromB);
+    const section = nearestHeading(afterDoc, span.fromB);
+    const slice = inserted ? afterDoc.textBetween(span.fromB, span.toB, ' ').trim() : '';
+    changes.push({
+      id,
+      time: 'Live',
+      section,
+      summary:
+        slice.length > 0
+          ? slice.slice(0, 96)
+          : kind === 'remove'
+            ? 'Removed a block'
+            : 'Updated a block',
+      kind,
+      additions: inserted ? 1 : 0,
+      deletions: deleted ? 1 : 0,
+      anchorIndex: index,
+    });
+  });
+
+  return { bindings, chipPositions, changes };
+}
+
+function nearestHeading(afterDoc: PMNode, pos: number): string {
+  let heading = 'Document';
+  afterDoc.descendants((node, nodePos) => {
+    if (nodePos > pos) return false;
+    if (node.type.name === 'heading' && node.textContent.trim().length > 0) {
+      heading = node.textContent;
+    }
+    return true;
+  });
+  return heading;
 }
 
 export function genericReviewBindings(

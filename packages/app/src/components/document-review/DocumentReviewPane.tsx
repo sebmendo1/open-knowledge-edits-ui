@@ -10,21 +10,28 @@ import {
 } from '@/components/document-review/ReviewRenderedDiffView';
 import { PropertyDiffBlock } from '@/components/PropertyDiffBlock';
 import { Spinner } from '@/components/ui/spinner';
+import { useDocumentContext } from '@/editor/DocumentContext';
 import { closeAgentDiff } from '@/lib/agent-diff-store';
 import {
   billingInvoicesDemoDiff,
   isBillingInvoicesDemoDoc,
 } from '@/lib/document-review/demo-billing-invoices';
-import { demoReviewBindings } from '@/lib/document-review/review-change-positions';
+import { getDocumentReviewKeptBody } from '@/lib/document-review/kept-state';
+import {
+  demoReviewBindings,
+  spanReviewBindings,
+} from '@/lib/document-review/review-change-positions';
 import {
   dismissDocumentReview,
   keepDocumentReviewChanges,
+  setDocumentReviewChanges,
   setDocumentReviewMarksHidden,
   setDocumentReviewRenderMode,
   setDocumentReviewSelectedChange,
   useDocumentReviewView,
 } from '@/lib/document-review/store';
 import type { DocumentReviewView } from '@/lib/document-review/types';
+import { readSourceBody, useLiveDocBody } from '@/lib/document-review/use-live-doc-body';
 import { LruStringCache } from '@/lib/lru-string-cache';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { closeTimelineDiff } from '@/lib/timeline-diff-store';
@@ -57,7 +64,10 @@ function docTitleFromName(docName: string): string {
     .join(' ');
 }
 
-function useDemoDiff(docName: string): {
+function useDemoDiff(
+  docName: string,
+  liveAfter: string,
+): {
   status: 'ready';
   before: string;
   after: string;
@@ -65,11 +75,14 @@ function useDemoDiff(docName: string): {
   properties: FrontmatterDelta;
 } {
   const demo = billingInvoicesDemoDiff();
+  const after = liveAfter.length > 0 ? liveAfter : demo.after;
+  const kept = getDocumentReviewKeptBody(docName);
+  const before = kept !== null && kept.length > 0 ? kept : demo.before;
   return {
     status: 'ready' as const,
-    before: demo.before,
-    after: demo.after,
-    diff: createPatch(docName, demo.before, demo.after, '', '', { context: 3 }),
+    before,
+    after,
+    diff: createPatch(docName, before, after, '', '', { context: 3 }),
     properties: EMPTY_DELTA,
   };
 }
@@ -128,12 +141,14 @@ export function DocumentReviewPane({
   onTogglePanel,
 }: DocumentReviewPaneProps) {
   const { t } = useLingui();
+  const { activeProvider } = useDocumentContext();
   const docName = view.source.docName;
   const diffBodyRef = useRef<HTMLDivElement>(null);
   const [cache] = useState(() => new LruStringCache(HISTORICAL_CONTENT_CACHE_LIMIT));
+  const liveAfter = useLiveDocBody(activeProvider, docName);
 
   const isDemo = view.source.kind === 'demo' || isBillingInvoicesDemoDoc(docName);
-  const demoBody = useDemoDiff(docName);
+  const demoBody = useDemoDiff(docName, liveAfter);
   const timelineSource = view.source.kind === 'timeline' ? view.source : null;
   const timelineBody = useTimelineEntryDiff(
     timelineSource?.sha ?? null,
@@ -152,15 +167,25 @@ export function DocumentReviewPane({
         ? {
             status: 'ready' as const,
             before: timelineBody.before,
-            after: timelineBody.after,
-            diff: timelineBody.diff,
+            after: liveAfter.length > 0 ? liveAfter : timelineBody.after,
+            diff:
+              liveAfter.length > 0
+                ? createPatch(docName, timelineBody.before, liveAfter, '', '', { context: 3 })
+                : timelineBody.diff,
             properties: timelineBody.properties,
           }
         : timelineBody.status === 'error'
           ? { status: 'error' as const, before: '', after: '', diff: '', properties: EMPTY_DELTA }
           : { status: 'loading' as const, before: '', after: '', diff: '', properties: EMPTY_DELTA }
       : agentBody.status === 'ready'
-        ? agentBody
+        ? {
+            ...agentBody,
+            after: liveAfter.length > 0 ? liveAfter : agentBody.after,
+            diff:
+              liveAfter.length > 0
+                ? createPatch(docName, agentBody.before, liveAfter, '', '', { context: 3 })
+                : agentBody.diff,
+          }
         : agentBody.status === 'error'
           ? { status: 'error' as const, before: '', after: '', diff: '', properties: EMPTY_DELTA }
           : agentBody.status === 'loading'
@@ -183,22 +208,45 @@ export function DocumentReviewPane({
   const usingRendered = view.renderMode === 'rendered' && rendered?.ok === true;
   const usingCleanAfter = view.marksHidden && body.status === 'ready';
 
+  const demoBound =
+    rendered?.ok === true ? demoReviewBindings(rendered.afterDoc, view.changes) : null;
+  const spanBound =
+    rendered?.ok === true ? spanReviewBindings(rendered.afterDoc, rendered.changes) : null;
+  const demoComplete =
+    demoBound !== null &&
+    demoBound.chipPositions.size > 0 &&
+    demoBound.chipPositions.size === view.changes.length;
   const reviewOptions =
-    !view.marksHidden && rendered?.ok === true && view.changes.length > 0
-      ? (() => {
-          const { bindings, chipPositions } = demoReviewBindings(rendered.afterDoc, view.changes);
-          return {
-            bindings,
-            chipPositions,
-            selectedChangeId: view.selectedChangeId,
-          };
-        })()
+    !view.marksHidden && rendered?.ok === true
+      ? {
+          bindings:
+            demoComplete && demoBound !== null ? demoBound.bindings : (spanBound?.bindings ?? []),
+          chipPositions:
+            demoComplete && demoBound !== null
+              ? demoBound.chipPositions
+              : (spanBound?.chipPositions ?? new Map()),
+          selectedChangeId: view.selectedChangeId,
+        }
       : undefined;
+
+  useEffect(() => {
+    if (demoComplete || spanBound === null || spanBound.changes.length === 0) return;
+    const next = spanBound.changes;
+    const same =
+      view.changes.length === next.length &&
+      view.changes.every((change, i) => change.id === next[i]?.id);
+    if (!same) setDocumentReviewChanges(next);
+  }, [demoComplete, spanBound, view.changes]);
 
   const changes = view.changes;
   const selectedIndex = changes.findIndex((c) => c.id === view.selectedChangeId);
   const effectiveIndex = selectedIndex >= 0 ? selectedIndex : 0;
   const selectedChange = selectedIndex >= 0 ? changes[selectedIndex] : null;
+
+  function snapshotReviewBody(): string {
+    const live = readSourceBody(activeProvider);
+    return live.length > 0 ? live : liveAfter;
+  }
 
   const totals = changes.reduce(
     (acc, change) => ({
@@ -214,7 +262,8 @@ export function DocumentReviewPane({
     function onKeyDown(e: KeyboardEvent): void {
       if (isOverlayLayerOpen()) return;
       if (e.key === 'Escape') {
-        dismissDocumentReview(docName);
+        const live = readSourceBody(activeProvider);
+        dismissDocumentReview(docName, live.length > 0 ? live : liveAfter);
         closeTimelineDiff();
         closeAgentDiff();
       }
@@ -232,16 +281,16 @@ export function DocumentReviewPane({
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [changes, effectiveIndex, docName, view.marksHidden]);
+  }, [changes, effectiveIndex, docName, view.marksHidden, activeProvider, liveAfter]);
 
   function handleClose(): void {
-    dismissDocumentReview(docName);
+    dismissDocumentReview(docName, snapshotReviewBody());
     closeTimelineDiff();
     closeAgentDiff();
   }
 
   function handleKeep(): void {
-    keepDocumentReviewChanges(docName);
+    keepDocumentReviewChanges(docName, snapshotReviewBody());
     closeTimelineDiff();
     closeAgentDiff();
     toast.message(t`Kept ${view.agentDisplayName}'s changes`);
@@ -266,6 +315,8 @@ export function DocumentReviewPane({
         totalDeletions={showStat ? stat.deletions : totals.deletions}
         changeIndex={changes.length > 0 ? effectiveIndex : 0}
         changeCount={changes.length}
+        changes={changes}
+        selectedChangeId={view.selectedChangeId}
         isPanelCollapsed={isPanelCollapsed}
         onClose={handleClose}
         onPrev={() => {
@@ -276,6 +327,7 @@ export function DocumentReviewPane({
           const next = Math.min(effectiveIndex + 1, changes.length - 1);
           setDocumentReviewSelectedChange(changes[next]?.id ?? null);
         }}
+        onSelectChange={setDocumentReviewSelectedChange}
         onRenderMode={setDocumentReviewRenderMode}
         onTogglePanel={onTogglePanel}
         onToggleMarksHidden={handleToggleMarksHidden}

@@ -15,7 +15,6 @@ import {
 import { lazy, type ReactNode, Suspense, useEffect } from 'react';
 import { CommentsTab } from '@/comments/CommentsTab';
 import { setCommentsPanelOnScreen } from '@/comments/comments-panel-visibility';
-import { ChangeIndexPanel } from '@/components/document-review/ChangeIndexPanel';
 import {
   composeFixAllProblemsTerminalPaste,
   composeLintFixTerminalPaste,
@@ -40,11 +39,6 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
 import { useDocLinkFindings } from '@/editor/validation-audit-client';
-import {
-  setDocumentReviewSelectedChange,
-  useDocumentReviewActiveForDoc,
-  useDocumentReviewView,
-} from '@/lib/document-review/store';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
 import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
@@ -80,8 +74,8 @@ function countsOf(diagnostics: readonly { severity: string }[]): DocProblemCount
   return { errorCount, warningCount };
 }
 
-function tabLabel(id: PanelTab, reviewActive: boolean): string {
-  if (id === 'outline') return reviewActive ? t`Changes` : t`Outline`;
+function tabLabel(id: PanelTab): string {
+  if (id === 'outline') return t`Outline`;
   if (id === 'links') return t`Links`;
   if (id === 'graph') return t`Graph`;
   if (id === 'problems') return t`Problems`;
@@ -168,14 +162,12 @@ export function DocPanel({
     );
   };
   const singleFile = useSingleFileMode();
-  const reviewActive = useDocumentReviewActiveForDoc(docName);
-  const reviewView = useDocumentReviewView();
   const tabs = singleFile ? TABS.filter((tab) => SINGLE_FILE_TABS.includes(tab.id)) : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showSwitcher = mode === 'doc' && tabs.length > 1;
   const currentTab = tabs.find((tab) => tab.id === effectiveTab) ?? tabs[0];
   const CurrentIcon = currentTab?.icon ?? ListTree;
-  const currentLabel = tabLabel(effectiveTab, reviewActive);
+  const currentLabel = tabLabel(effectiveTab);
   const problemsBadge =
     diagnostics.length > 0 ? (diagnostics.length > 99 ? '99+' : String(diagnostics.length)) : null;
   useEffect(() => {
@@ -212,7 +204,7 @@ export function DocPanel({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
               {tabs.map(({ id, icon: Icon }) => {
-                const label = tabLabel(id, reviewActive);
+                const label = tabLabel(id);
                 const showBadge = id === 'problems' && diagnostics.length > 0;
                 return (
                   <DropdownMenuItem
@@ -250,16 +242,9 @@ export function DocPanel({
               : 'overflow-auto subtle-scrollbar',
           )}
         >
-          {effectiveTab === 'outline' &&
-            (reviewActive && reviewView ? (
-              <ChangeIndexPanel
-                changes={reviewView.changes}
-                selectedChangeId={reviewView.selectedChangeId}
-                onSelect={setDocumentReviewSelectedChange}
-              />
-            ) : (
-              <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
-            ))}
+          {effectiveTab === 'outline' && (
+            <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
+          )}
           {effectiveTab === 'links' && <LinksPanel docName={docName} />}
           {effectiveTab === 'graph' && (
             <Suspense

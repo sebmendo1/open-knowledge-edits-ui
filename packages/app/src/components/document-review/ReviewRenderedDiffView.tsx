@@ -71,6 +71,13 @@ export function ReviewRenderedDiffView({
         reviewOptions,
       );
 
+  const chipPositionsKey = reviewOptions
+    ? [...reviewOptions.chipPositions.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([id, pos]) => `${id}:${pos}`)
+        .join('|')
+    : '';
+
   const editor = useEditor(
     {
       editable: false,
@@ -80,7 +87,7 @@ export function ReviewRenderedDiffView({
         attributes: { class: 'pt-4 document-review-editor' },
       },
     },
-    [diff, marksHidden, reviewOptions?.selectedChangeId, reviewOptions?.chipPositions],
+    [diff, marksHidden, reviewOptions?.selectedChangeId, chipPositionsKey],
   );
 
   const scrollRef = useRef<HTMLDivElement>(null);

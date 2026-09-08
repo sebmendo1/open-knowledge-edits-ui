@@ -1,10 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, ChevronUp, PanelRightClose, PanelRightOpen, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChangeIndexPanel } from '@/components/document-review/ChangeIndexPanel';
 import { AgentIcon } from '@/components/icons/AgentIcon';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { DocumentReviewView } from '@/lib/document-review/types';
+import type { DocumentReviewChange, DocumentReviewView } from '@/lib/document-review/types';
 
 interface DocumentReviewBarProps {
   view: DocumentReviewView;
@@ -13,10 +16,13 @@ interface DocumentReviewBarProps {
   totalDeletions: number;
   changeIndex: number;
   changeCount: number;
+  changes: readonly DocumentReviewChange[];
+  selectedChangeId: string | null;
   isPanelCollapsed: boolean;
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onSelectChange: (changeId: string) => void;
   onRenderMode: (mode: 'rendered' | 'source') => void;
   onTogglePanel: () => void;
   onToggleMarksHidden: () => void;
@@ -30,16 +36,20 @@ export function DocumentReviewBar({
   totalDeletions,
   changeIndex,
   changeCount,
+  changes,
+  selectedChangeId,
   isPanelCollapsed,
   onClose,
   onPrev,
   onNext,
+  onSelectChange,
   onRenderMode,
   onTogglePanel,
   onToggleMarksHidden,
   onKeep,
 }: DocumentReviewBarProps) {
   const { t } = useLingui();
+  const [changesPopoverOpen, setChangesPopoverOpen] = useState(false);
   const hasChanges = changeCount > 0;
   const displayIndex = hasChanges ? changeIndex + 1 : 0;
   const marksVisible = !view.marksHidden;
@@ -88,50 +98,75 @@ export function DocumentReviewBar({
         <Trans>Unsaved</Trans>
       </span>
 
-      {marksVisible ? (
-        <div className="mx-auto flex shrink-0 items-center gap-2 text-xs tabular-nums">
-          <span aria-hidden="true" className="text-emerald-600 dark:text-emerald-500">
-            +{totalAdditions}
-          </span>
-          <span aria-hidden="true" className="text-red-600 dark:text-red-500">
-            −{totalDeletions}
-          </span>
-        </div>
+      {hasChanges ? (
+        <Popover open={changesPopoverOpen} onOpenChange={setChangesPopoverOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="mx-auto h-7 shrink-0 gap-1.5 px-2 text-xs tabular-nums"
+              data-testid="document-review-changes-trigger"
+              aria-label={t`View change history`}
+            >
+              {marksVisible ? (
+                <>
+                  <span className="text-emerald-600 dark:text-emerald-500">+{totalAdditions}</span>
+                  <span className="text-red-600 dark:text-red-500">−{totalDeletions}</span>
+                  <span className="text-muted-foreground">
+                    · {displayIndex} of {changeCount}
+                  </span>
+                </>
+              ) : (
+                <Trans>{changeCount} changes</Trans>
+              )}
+              <ChevronDown className="size-3.5 shrink-0 opacity-60" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="center"
+            className="w-80 p-0"
+            data-testid="document-review-change-popover"
+          >
+            <ChangeIndexPanel
+              changes={changes}
+              selectedChangeId={selectedChangeId}
+              onSelect={(changeId) => {
+                onSelectChange(changeId);
+                setChangesPopoverOpen(false);
+              }}
+            />
+          </PopoverContent>
+        </Popover>
       ) : (
         <div className="mx-auto shrink-0" aria-hidden="true" />
       )}
 
       <div className="ms-auto flex flex-wrap items-center justify-end gap-2">
         {marksVisible && hasChanges ? (
-          <>
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              {displayIndex} of {changeCount} changes
-            </span>
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                data-testid="document-review-prev"
-                aria-label={t`Previous change`}
-                disabled={changeIndex <= 0}
-                onClick={onPrev}
-              >
-                <ChevronUp className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-7"
-                data-testid="document-review-next"
-                aria-label={t`Next change`}
-                disabled={changeIndex >= changeCount - 1}
-                onClick={onNext}
-              >
-                <ChevronDown className="size-4" />
-              </Button>
-            </div>
-          </>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              data-testid="document-review-prev"
+              aria-label={t`Previous change`}
+              disabled={changeIndex <= 0}
+              onClick={onPrev}
+            >
+              <ChevronUp className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              data-testid="document-review-next"
+              aria-label={t`Next change`}
+              disabled={changeIndex >= changeCount - 1}
+              onClick={onNext}
+            >
+              <ChevronDown className="size-4" />
+            </Button>
+          </div>
         ) : null}
 
         <Button

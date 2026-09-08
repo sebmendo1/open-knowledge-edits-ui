@@ -8,7 +8,8 @@ import {
 } from './demo-billing-invoices';
 import {
   clearDocumentReviewKept,
-  isDocumentReviewKept,
+  getDocumentReviewKeptBody,
+  isDocumentReviewSettled,
   markDocumentReviewKept,
 } from './kept-state';
 import type {
@@ -16,8 +17,6 @@ import type {
   DocumentReviewTimelineSource,
   DocumentReviewView,
 } from './types';
-
-export { isDocumentReviewKept } from './kept-state';
 
 let current: DocumentReviewView | null = null;
 const listeners = new Set<() => void>();
@@ -27,12 +26,14 @@ function notify(): void {
 }
 
 function demoView(docName: string): DocumentReviewView {
+  const kept = getDocumentReviewKeptBody(docName);
+  const sinceKeep = kept !== null && kept.length > 0;
   return {
     source: { kind: 'demo', docName },
     agentDisplayName: 'Claude',
     agentColor: '#D97757',
-    timeRangeLabel: '10:42–10:58',
-    changes: BILLING_DEMO_CHANGES,
+    timeRangeLabel: sinceKeep ? 'Since Keep' : '10:42–10:58',
+    changes: sinceKeep ? [] : BILLING_DEMO_CHANGES,
     selectedChangeId: null,
     renderMode: 'rendered',
     marksHidden: false,
@@ -110,8 +111,12 @@ export function openDocumentReviewFromAgent(view: AgentDiffView): void {
   notify();
 }
 
-export function openDocumentReviewDemo(docName: string = BILLING_INVOICES_DOC): void {
-  if (isDocumentReviewKept(docName)) return;
+export function openDocumentReviewDemo(
+  docName: string = BILLING_INVOICES_DOC,
+  liveBody = '',
+): void {
+  if (isDocumentReviewSettled(docName, liveBody)) return;
+  if (current !== null) return;
   current = demoView(docName);
   notify();
 }
@@ -123,13 +128,13 @@ export function closeDocumentReview(): void {
   }
 }
 
-export function keepDocumentReviewChanges(docName: string): void {
-  markDocumentReviewKept(docName);
+export function keepDocumentReviewChanges(docName: string, body: string): void {
+  markDocumentReviewKept(docName, body);
   closeDocumentReview();
 }
 
-export function dismissDocumentReview(docName: string): void {
-  markDocumentReviewKept(docName);
+export function dismissDocumentReview(docName: string, body: string): void {
+  markDocumentReviewKept(docName, body);
   closeDocumentReview();
 }
 
