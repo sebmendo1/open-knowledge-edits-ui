@@ -1,9 +1,18 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
 import { t } from '@lingui/core/macro';
-import { Trans, useLingui } from '@lingui/react/macro';
-import { AlertTriangle, Clock, Link2, ListTree, MessageSquare, Network } from 'lucide-react';
-import { lazy, Suspense, useEffect } from 'react';
+import { Trans } from '@lingui/react/macro';
+import {
+  AlertTriangle,
+  Bot,
+  ChevronDown,
+  Clock,
+  Link2,
+  ListTree,
+  MessageSquare,
+  Network,
+} from 'lucide-react';
+import { lazy, type ReactNode, Suspense, useEffect } from 'react';
 import { CommentsTab } from '@/comments/CommentsTab';
 import { setCommentsPanelOnScreen } from '@/comments/comments-panel-visibility';
 import {
@@ -18,17 +27,30 @@ import type { PanelScope } from '@/components/PanelScopeHeader';
 import { type DiagnosticLike, ProblemsPanel } from '@/components/ProblemsPanel';
 import { TimelineContent } from '@/components/TimelinePanel';
 import { Badge } from '@/components/ui/badge';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { applyLintFixes, collectFixes } from '@/editor/apply-lint-fix';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
 import { useDocLinkFindings } from '@/editor/validation-audit-client';
 import { useSingleFileMode } from '@/lib/single-file-mode';
+import { cn } from '@/lib/utils';
 import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
 
-export type PanelTab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems' | 'comments';
+export type PanelTab =
+  | 'outline'
+  | 'links'
+  | 'graph'
+  | 'timeline'
+  | 'problems'
+  | 'comments'
+  | 'agents';
 
 export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'outline', icon: ListTree },
@@ -37,6 +59,7 @@ export const TABS: { id: PanelTab; icon: typeof ListTree }[] = [
   { id: 'timeline', icon: Clock },
   { id: 'problems', icon: AlertTriangle },
   { id: 'comments', icon: MessageSquare },
+  { id: 'agents', icon: Bot },
 ];
 
 const SINGLE_FILE_TABS: readonly PanelTab[] = ['outline', 'problems', 'comments'];
@@ -57,6 +80,7 @@ function tabLabel(id: PanelTab): string {
   if (id === 'graph') return t`Graph`;
   if (id === 'problems') return t`Problems`;
   if (id === 'comments') return t`Comments`;
+  if (id === 'agents') return t`Agents`;
   return t`Timeline`;
 }
 
@@ -83,6 +107,7 @@ interface DocPanelProps {
   onActiveTabChange: (tab: PanelTab) => void;
   mode: DocPanelMode;
   isCollapsed?: boolean;
+  agentsSlot?: ReactNode;
 }
 
 export function DocPanel({
@@ -92,8 +117,8 @@ export function DocPanel({
   onActiveTabChange,
   mode,
   isCollapsed = false,
+  agentsSlot,
 }: DocPanelProps) {
-  const { t } = useLingui();
   const { activeProvider, activeDocName } = useDocumentContext();
   const { data: lintConfig } = useDocLintConfig(docName);
   const lintProvider = activeDocName === docName ? activeProvider : null;
@@ -139,7 +164,12 @@ export function DocPanel({
   const singleFile = useSingleFileMode();
   const tabs = singleFile ? TABS.filter((tab) => SINGLE_FILE_TABS.includes(tab.id)) : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
-  const showTabStrip = mode === 'doc' && tabs.length > 1;
+  const showSwitcher = mode === 'doc' && tabs.length > 1;
+  const currentTab = tabs.find((tab) => tab.id === effectiveTab) ?? tabs[0];
+  const CurrentIcon = currentTab?.icon ?? ListTree;
+  const currentLabel = tabLabel(effectiveTab);
+  const problemsBadge =
+    diagnostics.length > 0 ? (diagnostics.length > 99 ? '99+' : String(diagnostics.length)) : null;
   useEffect(() => {
     setCommentsPanelOnScreen(!isCollapsed && mode === 'doc' && effectiveTab === 'comments');
     return () => setCommentsPanelOnScreen(false);
@@ -147,61 +177,70 @@ export function DocPanel({
   return (
     <>
       {}
-      {showTabStrip ? (
-        <div className="flex flex-row items-center justify-center gap-3 p-2">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            value={effectiveTab}
-            onValueChange={(value: PanelTab) => {
-              if (value) onActiveTabChange(value);
-            }}
-            aria-label={t`Document panels`}
-          >
-            {tabs.map(({ id, icon: Icon }) => {
-              const label = tabLabel(id);
-              const showBadge = id === 'problems' && diagnostics.length > 0;
-              return (
-                <Tooltip key={id}>
-                  <ToggleGroupItem
-                    value={id}
-                    role="tab"
-                    id={`tab-${id}`}
-                    aria-controls={`panel-${id}`}
-                    aria-label={showBadge ? t`${label} (${diagnostics.length})` : label}
-                    asChild
+      {showSwitcher ? (
+        <div className="border-b border-border/60 p-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                data-testid="doc-panel-switcher"
+                className="h-9 w-full justify-between gap-2 px-2 font-normal"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <CurrentIcon className="size-4 shrink-0" />
+                  <span className="truncate">{currentLabel}</span>
+                  {effectiveTab === 'problems' && problemsBadge != null ? (
+                    <Badge
+                      variant="notification"
+                      aria-hidden="true"
+                      className="h-4 min-w-4 shrink-0 rounded-full px-1 font-sans text-[10px] leading-none tabular-nums"
+                    >
+                      {problemsBadge}
+                    </Badge>
+                  ) : null}
+                </span>
+                <ChevronDown className="size-4 shrink-0 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
+              {tabs.map(({ id, icon: Icon }) => {
+                const label = tabLabel(id);
+                const showBadge = id === 'problems' && diagnostics.length > 0;
+                return (
+                  <DropdownMenuItem
+                    key={id}
+                    data-testid={`doc-panel-switcher-item-${id}`}
+                    className={cn(effectiveTab === id && 'bg-accent')}
+                    onSelect={() => onActiveTabChange(id)}
                   >
-                    <TooltipTrigger className="relative">
-                      <Icon />
-                      {showBadge && (
-                        <Badge
-                          variant="notification"
-                          aria-hidden="true"
-                          className="pointer-events-none absolute -top-0.5 right-0.5 h-3.5 min-w-3.5 rounded-full px-1 font-sans text-[9px] leading-none tabular-nums"
-                        >
-                          {diagnostics.length > 99 ? '99+' : diagnostics.length}
-                        </Badge>
-                      )}
-                    </TooltipTrigger>
-                  </ToggleGroupItem>
-                  <TooltipContent side="bottom">{label}</TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </ToggleGroup>
+                    <Icon />
+                    <span className="flex-1">{label}</span>
+                    {showBadge ? (
+                      <Badge
+                        variant="notification"
+                        aria-hidden="true"
+                        className="h-4 min-w-4 rounded-full px-1 font-sans text-[10px] leading-none tabular-nums"
+                      >
+                        {diagnostics.length > 99 ? '99+' : diagnostics.length}
+                      </Badge>
+                    ) : null}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       ) : null}
 
       {mode === 'doc' ? (
         <div
-          {...(showTabStrip
-            ? {
-                role: 'tabpanel' as const,
-                id: `panel-${effectiveTab}`,
-                'aria-labelledby': `tab-${effectiveTab}`,
-              }
-            : {})}
-          className="min-h-0 flex-1"
+          id={`panel-${effectiveTab}`}
+          className={cn(
+            'min-h-0 flex-1',
+            effectiveTab === 'agents'
+              ? 'flex flex-col overflow-hidden'
+              : 'overflow-auto subtle-scrollbar',
+          )}
         >
           {effectiveTab === 'outline' && (
             <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
@@ -231,6 +270,7 @@ export function DocPanel({
               onFixWithAi={terminalLaunch !== null ? handleFixWithAi : undefined}
             />
           )}
+          {effectiveTab === 'agents' && agentsSlot}
         </div>
       ) : (
         <div className="min-h-0 flex-1">

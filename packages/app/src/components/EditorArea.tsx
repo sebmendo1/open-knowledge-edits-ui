@@ -68,6 +68,13 @@ import {
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
+import { isBillingInvoicesDemoDoc } from '@/lib/document-review/demo-billing-invoices';
+import {
+  closeDocumentReview,
+  openDocumentReviewDemo,
+  useDocumentReviewView,
+} from '@/lib/document-review/store';
+import { readSourceBody } from '@/lib/document-review/use-live-doc-body';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
@@ -97,7 +104,6 @@ import {
 } from './EditorWorkspace';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import {
-  AGENTS_COLUMN_ID,
   accountRailLayout,
   DOC_PANEL_ID,
   findResidualPanelId,
@@ -110,7 +116,6 @@ import {
 } from './right-rail-admission';
 import { isSlidesHost } from './slides-host-gate';
 import { TerminalDock } from './TerminalDock';
-import { TerminalRevealTab } from './TerminalRevealTab';
 
 const LazyActivityModeContent = lazy(async () => {
   const mod = await import('@/components/ActivityModeContent');
@@ -201,18 +206,15 @@ function PaneDocumentToolbar({
   );
 }
 
-const LazyTimelineDiffPane = lazy(async () => {
-  const mod = await import('@/components/TimelineDiffPane');
-  return { default: mod.TimelineDiffPane };
-});
-const LazyAgentDiffPane = lazy(async () => {
-  const mod = await import('@/components/AgentDiffPane');
-  return { default: mod.AgentDiffPane };
+const LazyDocumentReviewPaneHost = lazy(async () => {
+  const mod = await import('@/components/document-review/DocumentReviewPane');
+  return { default: mod.DocumentReviewPaneHost };
 });
 
 const DOC_PANEL_MIN_WIDTH_PX = 300;
 const DOC_PANEL_MIN_SIZE = `${DOC_PANEL_MIN_WIDTH_PX}px`;
 const DOC_PANEL_MAX_SIZE = '600px';
+const DOC_PANEL_AGENTS_MAX_SIZE = '60%';
 
 interface SessionPanelPlacement {
   readonly container: HTMLElement | null;
@@ -239,7 +241,6 @@ interface EditorAreaProps {
   agentsVisible?: boolean;
   onAgentsVisibleChange?: (visible: boolean) => void;
   onSessionPlacements?: (placements: SessionPlacements) => void;
-  onRevealAgents?: () => void;
   renderWorkspaceHeader?: (tabs: ReactNode) => ReactNode;
 }
 
@@ -286,7 +287,6 @@ function EditorAreaInner({
   agentsVisible = false,
   onAgentsVisibleChange,
   onSessionPlacements,
-  onRevealAgents,
   renderWorkspaceHeader = renderTabsWithoutHeader,
 }: EditorAreaProps) {
   const { t } = useLingui();
@@ -318,9 +318,53 @@ function EditorAreaInner({
   const showStats = !!activeDocName && activeTarget?.kind !== 'folder';
   const editorPlaceholder = isNewDoc ? t`Start writing to create this page` : undefined;
   const timelineDiff = useTimelineDiffView();
+  const documentReview = useDocumentReviewView();
   useEffect(() => {
     if (timelineDiff && timelineDiff.docName !== activeDocName) closeTimelineDiff();
   }, [activeDocName, timelineDiff]);
+  useEffect(() => {
+    if (activeDocName === null || !isBillingInvoicesDemoDoc(activeDocName)) return;
+    if (documentReview?.source.docName === activeDocName) return;
+    openDocumentReviewDemo(activeDocName, readSourceBody(activeProvider));
+  }, [activeDocName, activeProvider, documentReview?.source.docName]);
+  useEffect(() => {
+    if (!activeProvider || activeDocName === null) return;
+    if (!isBillingInvoicesDemoDoc(activeDocName)) return;
+    const docName = activeDocName;
+    const provider = activeProvider;
+    const ytext = provider.document.getText('source');
+    function onLiveEdit(): void {
+      openDocumentReviewDemo(docName, readSourceBody(provider));
+    }
+    ytext.observe(onLiveEdit);
+    return () => {
+      ytext.unobserve(onLiveEdit);
+    };
+  }, [activeProvider, activeDocName]);
+  const documentReviewDoc = documentReview?.source.docName ?? null;
+  const documentReviewNavTargetRef = useRef<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed only on the review doc so this starts navigation when a review opens for another file and never fights a manual nav-away
+  useEffect(() => {
+    if (documentReviewDoc == null) {
+      documentReviewNavTargetRef.current = null;
+      return;
+    }
+    documentReviewNavTargetRef.current = documentReviewDoc;
+    if (documentReviewDoc !== activeDocName) {
+      const nextHash = hashFromDocName(documentReviewDoc);
+      if (isSameHash(window.location.hash, nextHash)) openDocumentTransition(documentReviewDoc);
+      else window.location.hash = nextHash;
+    }
+  }, [documentReviewDoc]);
+  useEffect(() => {
+    if (documentReviewDoc == null) return;
+    if (documentReviewDoc === activeDocName) {
+      documentReviewNavTargetRef.current = null;
+      return;
+    }
+    if (documentReviewNavTargetRef.current === documentReviewDoc) return;
+    closeDocumentReview();
+  }, [activeDocName, documentReviewDoc]);
   const agentDiff = useAgentDiffView();
   const agentDiffDoc = agentDiff?.docName ?? null;
   const agentDiffNavTargetRef = useRef<string | null>(null);
@@ -348,8 +392,11 @@ function EditorAreaInner({
   }, [activeDocName, agentDiffDoc]);
   useEffect(() => {
     const agentPanelOpen = docPanelMode === 'agent' && docPanelAgentId !== null;
-    if (!agentPanelOpen) closeAgentDiff();
-  }, [docPanelMode, docPanelAgentId]);
+    if (!agentPanelOpen) {
+      closeAgentDiff();
+      if (documentReview?.source.kind === 'agent') closeDocumentReview();
+    }
+  }, [docPanelMode, docPanelAgentId, documentReview?.source.kind]);
   const pendingReceiveNav = useSyncExternalStore(
     pendingReceiveNavStore.subscribe,
     pendingReceiveNavStore.getSnapshot,
@@ -367,7 +414,6 @@ function EditorAreaInner({
     rightPartitionRef.current = rightPartition;
   }, [rightPartition]);
   const panelRef = usePanelRef();
-  const agentsColumnPanelRef = usePanelRef();
   const terminalColumnPanelRef = usePanelRef();
   const [initialRightCollapsed] = useState(() => {
     const pins = readPins();
@@ -377,6 +423,13 @@ function EditorAreaInner({
   const isCollapsedRef = useRef(isCollapsed);
 
   const [agentsContainer, setAgentsContainer] = useState<HTMLDivElement | null>(null);
+  const agentsMount = (
+    <div
+      ref={setAgentsContainer}
+      data-agents-panel-mount=""
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    />
+  );
   const [rightTerminalContainer, setRightTerminalContainer] = useState<HTMLDivElement | null>(null);
   const [workspaceHeaderContainer, setWorkspaceHeaderContainer] = useState<HTMLDivElement | null>(
     null,
@@ -387,14 +440,13 @@ function EditorAreaInner({
   );
   const [terminalEditorRegion, setTerminalEditorRegion] = useState<HTMLDivElement | null>(null);
 
-  const agentsColumnPresent = !noteWindow && agentsVisible;
   const terminalColumnPresent = !noteWindow && terminalVisible && terminalPlacement === 'right';
-  const resizableRailColumnPresent = terminalColumnPresent || agentsColumnPresent;
-  const rightRevealTabPresent = !noteWindow && !agentsVisible && onRevealAgents != null;
+  const resizableRailColumnPresent = terminalColumnPresent;
+  const agentsSurfaceActive = !noteWindow && agentsVisible;
   const terminalContainer =
     terminalPlacement === 'right' ? rightTerminalContainer : bottomTerminalContainer;
   const terminalShowing = terminalVisible && terminalContainer != null;
-  const agentsShowing = agentsColumnPresent && agentsContainer != null;
+  const agentsShowing = agentsSurfaceActive && !isCollapsed && agentsContainer != null;
   useEffect(() => {
     onSessionPlacements?.({
       terminal: { container: terminalContainer, isShowing: terminalShowing },
@@ -429,8 +481,6 @@ function EditorAreaInner({
 
   const [initialAgentsWidthPx] = useState(() => getInitialAgentsPanelWidth());
   const agentsWidthPxRef = useRef(initialAgentsWidthPx);
-  const [isDraggingAgentsHandle, setIsDraggingAgentsHandle] = useState(false);
-  const isDraggingAgentsHandleRef = useRef(false);
   const agentsWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   function debouncedWriteAgentsWidth(px: number) {
     if (agentsWriteTimerRef.current != null) clearTimeout(agentsWriteTimerRef.current);
@@ -466,7 +516,6 @@ function EditorAreaInner({
     },
     [],
   );
-
   const [groupContainerEl, setGroupContainerEl] = useState<HTMLDivElement | null>(null);
   const groupContainerElRef = useRef<HTMLDivElement | null>(null);
 
@@ -490,7 +539,7 @@ function EditorAreaInner({
 
   const groupRef = useGroupRef();
   function resolveGroupPxWidth(): number | null {
-    for (const ref of [panelRef, terminalColumnPanelRef, agentsColumnPanelRef]) {
+    for (const ref of [panelRef, terminalColumnPanelRef]) {
       const size = ref.current?.getSize();
       if (size != null && size.asPercentage > 1 && size.inPixels > 0) {
         return (size.inPixels / size.asPercentage) * 100;
@@ -516,10 +565,15 @@ function EditorAreaInner({
       const docWidthPx =
         measuredWidthPx != null && measuredWidthPx > 0
           ? measuredWidthPx
-          : docPanelWidthPxRef.current;
+          : agentsSurfaceActive
+            ? agentsWidthPxRef.current
+            : docPanelWidthPxRef.current;
+      const docMinimumWidthPx = agentsSurfaceActive
+        ? MIN_AGENTS_PANEL_WIDTH
+        : DOC_PANEL_MIN_WIDTH_PX;
       return {
         workspaceWidthPx,
-        otherRailWidthPx: Math.max(docWidthPx, DOC_PANEL_MIN_WIDTH_PX),
+        otherRailWidthPx: Math.max(docWidthPx, docMinimumWidthPx),
       };
     } catch (error) {
       reportUnexpectedPanelGroupFailure('resolve-admission-metrics-failed', error);
@@ -628,12 +682,17 @@ function EditorAreaInner({
     const buildPins = (atFloor: boolean): Record<string, number> => {
       const pins: Record<string, number> = {};
       if (DOC_PANEL_ID in layout) {
+        const agentsTab = admissionVisibilityRef.current.agentsVisible;
         pins[DOC_PANEL_ID] =
           !docSlotPresentRef.current || docCollapsed
             ? 0
             : atFloor
-              ? DOC_PANEL_MIN_WIDTH_PX
-              : docPanelWidthPxRef.current;
+              ? agentsTab
+                ? MIN_AGENTS_PANEL_WIDTH
+                : DOC_PANEL_MIN_WIDTH_PX
+              : agentsTab
+                ? agentsWidthPxRef.current
+                : docPanelWidthPxRef.current;
       }
       if (TERMINAL_COLUMN_ID in layout) {
         pins[TERMINAL_COLUMN_ID] = !admissionVisibilityRef.current.terminalRightVisible
@@ -641,13 +700,6 @@ function EditorAreaInner({
           : atFloor
             ? RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX
             : terminalWidthPxRef.current;
-      }
-      if (AGENTS_COLUMN_ID in layout) {
-        pins[AGENTS_COLUMN_ID] = !admissionVisibilityRef.current.agentsVisible
-          ? 0
-          : atFloor
-            ? MIN_AGENTS_PANEL_WIDTH
-            : agentsWidthPxRef.current;
       }
       return pins;
     };
@@ -725,12 +777,7 @@ function EditorAreaInner({
   }
 
   function assertRightRailLayout(docCollapsed: boolean): boolean {
-    if (
-      isDraggingDocHandleRef.current ||
-      isDraggingTerminalHandleRef.current ||
-      isDraggingAgentsHandleRef.current
-    )
-      return true;
+    if (isDraggingDocHandleRef.current || isDraggingTerminalHandleRef.current) return true;
     isCollapsedRef.current = docCollapsed;
     return applyRailLayout(docCollapsed);
   }
@@ -774,12 +821,7 @@ function EditorAreaInner({
   useEffect(() => () => endHandleDragRef.current?.(), []);
 
   function syncRailColumns(): boolean {
-    if (
-      isDraggingDocHandleRef.current ||
-      isDraggingTerminalHandleRef.current ||
-      isDraggingAgentsHandleRef.current
-    )
-      return true;
+    if (isDraggingDocHandleRef.current || isDraggingTerminalHandleRef.current) return true;
     return applyRailLayout(isCollapsedRef.current);
   }
 
@@ -794,7 +836,7 @@ function EditorAreaInner({
     return () => {
       if (frameRef.id !== 0) cancelAnimationFrame(frameRef.id);
     };
-  }, [terminalColumnPresent, agentsColumnPresent]);
+  }, [terminalColumnPresent, agentsSurfaceActive]);
 
   function expandDocPanel() {
     if (!docSlotPresentRef.current) return;
@@ -843,6 +885,15 @@ function EditorAreaInner({
     ro.observe(groupContainerEl);
     return () => ro.disconnect();
   }, [groupContainerEl, isEmbedded]);
+
+  useLayoutEffect(() => {
+    if (!agentsVisible) return;
+    expandDocPanel();
+  }, [
+    agentsVisible,
+    // biome-ignore lint/correctness/useExhaustiveDependencies: expandDocPanel is render-bound; re-running keeps the closure fresh
+    expandDocPanel,
+  ]);
 
   const openRequestedDocPanelTab = useEffectEvent((tab: PanelTab) => {
     if (docPanelMode === 'agent') closeActivityPanel();
@@ -1037,7 +1088,7 @@ function EditorAreaInner({
         subtitle={activeTarget.subtitle}
         level={activeTarget.level}
         path={activeTarget.path}
-        reserveRightGutter={rightRevealTabPresent}
+        reserveRightGutter={false}
       />
     );
   } else if (shareReceiveMiss) {
@@ -1076,9 +1127,7 @@ function EditorAreaInner({
         agentsVisible,
         isEmbedded,
         activeDocName,
-      }) &&
-      !(timelineDiff && timelineDiff.docName === activeDocName) &&
-      !(agentDiff && agentDiffDoc === activeDocName);
+      }) && !(documentReview && documentReview.source.docName === activeDocName);
     const externalSkillEdit = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
     const renderEditorContent = (activityMount: ReactNode) => (
       <div className="relative flex h-full flex-col">
@@ -1090,7 +1139,13 @@ function EditorAreaInner({
         ) : null}
         <div className="relative min-h-0 flex-1">
           {}
-          <div className="relative h-full">
+          <div
+            className={
+              documentReview && documentReview.source.docName === activeDocName
+                ? 'pointer-events-none invisible relative h-full'
+                : 'relative h-full'
+            }
+          >
             {activityMount}
             <FindReplaceController activeDocName={activeDocName} isSourceMode={isSourceMode} />
             {}
@@ -1106,27 +1161,19 @@ function EditorAreaInner({
                 {activeDocName !== null ? <MountStalledAffordance docName={activeDocName} /> : null}
               </div>
             ) : null}
-            {}
-            {timelineDiff && timelineDiff.docName === activeDocName ? (
-              <Suspense fallback={null}>
-                <LazyTimelineDiffPane
-                  view={timelineDiff}
-                  isPanelCollapsed={isCollapsed}
-                  onTogglePanel={togglePanel}
-                />
-              </Suspense>
-            ) : null}
-            {}
-            {agentDiff && agentDiffDoc === activeDocName ? (
-              <Suspense fallback={null}>
-                <LazyAgentDiffPane
-                  view={agentDiff}
-                  isPanelCollapsed={isCollapsed}
-                  onTogglePanel={togglePanel}
-                />
-              </Suspense>
-            ) : null}
           </div>
+          {}
+          {documentReview && documentReview.source.docName === activeDocName ? (
+            <Suspense fallback={null}>
+              <div className="absolute inset-0 z-[1] flex min-h-0 flex-col bg-background">
+                <LazyDocumentReviewPaneHost
+                  docName={activeDocName}
+                  isPanelCollapsed={isCollapsed}
+                  onTogglePanel={togglePanel}
+                />
+              </div>
+            </Suspense>
+          ) : null}
           {}
           {showBottomComposer ? (
             <BottomComposer
@@ -1161,11 +1208,26 @@ function EditorAreaInner({
         onActiveTabChange={onActiveTabChange}
         mode={docPanelMode}
         isCollapsed={isCollapsed}
+        agentsSlot={agentsMount}
       />
     );
   }
 
-  if (noteWindow) docSlotContent = null;
+  if (noteWindow) {
+    docSlotContent = null;
+  } else if (docSlotContent == null && agentsSurfaceActive && activeTab === 'agents') {
+    docSlotContent = (
+      <DocPanel
+        docName=""
+        isSourceMode={false}
+        activeTab={activeTab}
+        onActiveTabChange={onActiveTabChange}
+        mode="doc"
+        isCollapsed={isCollapsed}
+        agentsSlot={agentsMount}
+      />
+    );
+  }
 
   const docSlotPresent = docSlotContent != null;
 
@@ -1299,7 +1361,7 @@ function EditorAreaInner({
               onModeChange={onModeChange}
               isPanelCollapsed={isCollapsed}
               onTogglePanel={togglePanel}
-              reserveRightGutter={docName === activeDocName && rightRevealTabPresent && isCollapsed}
+              reserveRightGutter={false}
             />
           )
         }
@@ -1332,6 +1394,16 @@ function EditorAreaInner({
     </TerminalDock>
   );
 
+  const docPanelMinSize = agentsSurfaceActive ? `${MIN_AGENTS_PANEL_WIDTH}px` : DOC_PANEL_MIN_SIZE;
+  const docPanelMaxSize = docSlotPresent
+    ? agentsSurfaceActive
+      ? DOC_PANEL_AGENTS_MAX_SIZE
+      : DOC_PANEL_MAX_SIZE
+    : '0px';
+  const docPanelInitialWidthPx = agentsSurfaceActive
+    ? initialAgentsWidthPx
+    : initialDocPanelWidthPx;
+
   const docSlot = (
     <>
       <ResizableHandle
@@ -1347,9 +1419,9 @@ function EditorAreaInner({
       <ResizablePanel
         id={DOC_PANEL_ID}
         panelRef={panelRef}
-        defaultSize={!docSlotPresent || initialRightCollapsed ? 0 : `${initialDocPanelWidthPx}px`}
-        minSize={DOC_PANEL_MIN_SIZE}
-        maxSize={docSlotPresent ? DOC_PANEL_MAX_SIZE : '0px'}
+        defaultSize={!docSlotPresent || initialRightCollapsed ? 0 : `${docPanelInitialWidthPx}px`}
+        minSize={docPanelMinSize}
+        maxSize={docPanelMaxSize}
         collapsible
         collapsedSize={0}
         onResize={(size) => {
@@ -1357,8 +1429,13 @@ function EditorAreaInner({
             setIsCollapsed(size.asPercentage === 0);
           }
           if (size.inPixels > 0 && isDraggingDocHandleRef.current) {
-            docPanelWidthPxRef.current = size.inPixels;
-            debouncedWriteDocPanelWidth(size.inPixels);
+            if (agentsSurfaceActive) {
+              agentsWidthPxRef.current = size.inPixels;
+              debouncedWriteAgentsWidth(size.inPixels);
+            } else {
+              docPanelWidthPxRef.current = size.inPixels;
+              debouncedWriteDocPanelWidth(size.inPixels);
+            }
           }
           reclaimHiddenRailColumn(DOC_PANEL_ID, docSlotPresent, size.inPixels);
         }}
@@ -1415,52 +1492,6 @@ function EditorAreaInner({
     </>
   );
 
-  const agentsColumn = (
-    <>
-      <ResizableHandle
-        withHandle={agentsColumnPresent}
-        className={agentsColumnPresent ? undefined : 'pointer-events-none'}
-        style={agentsColumnPresent ? undefined : { display: 'none' }}
-        onPointerDown={(event) => {
-          trackHandleDrag(
-            event.pointerId,
-            setIsDraggingAgentsHandle,
-            isDraggingAgentsHandleRef,
-            () => {
-              if (agentsColumnPanelRef.current?.isCollapsed()) {
-                onAgentsVisibleChange?.(false);
-              }
-            },
-          );
-        }}
-      />
-      <ResizablePanel
-        id={AGENTS_COLUMN_ID}
-        panelRef={agentsColumnPanelRef}
-        defaultSize={agentsColumnPresent ? `${initialAgentsWidthPx}px` : 0}
-        minSize={`${MIN_AGENTS_PANEL_WIDTH}px`}
-        maxSize={agentsColumnPresent ? '95%' : '0px'}
-        collapsible
-        collapsedSize={0}
-        onResize={(size) => {
-          if (size.inPixels > 0 && isDraggingAgentsHandleRef.current) {
-            agentsWidthPxRef.current = size.inPixels;
-            debouncedWriteAgentsWidth(size.inPixels);
-          }
-          reclaimHiddenRailColumn(AGENTS_COLUMN_ID, agentsColumnPresent, size.inPixels);
-        }}
-        className="flex flex-col"
-      >
-        {}
-        <div
-          ref={setAgentsContainer}
-          data-agents-panel-mount=""
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
-        />
-      </ResizablePanel>
-    </>
-  );
-
   if (coldStartSkeleton) return <EditorSkeleton />;
 
   const editorAbsorbsResidual =
@@ -1484,9 +1515,7 @@ function EditorAreaInner({
         <ResizablePanelGroup
           orientation="horizontal"
           groupRef={groupRef}
-          data-dragging={
-            isDraggingDocHandle || isDraggingTerminalHandle || isDraggingAgentsHandle || undefined
-          }
+          data-dragging={isDraggingDocHandle || isDraggingTerminalHandle || undefined}
         >
           <ResizablePanel
             minSize={resizableRailColumnPresent ? '5%' : '30%'}
@@ -1498,11 +1527,7 @@ function EditorAreaInner({
           </ResizablePanel>
           {docSlot}
           {terminalColumn}
-          {agentsColumn}
         </ResizablePanelGroup>
-        {rightRevealTabPresent ? (
-          <TerminalRevealTab edge="right" onReveal={onRevealAgents} className="top-2.5 right-0" />
-        ) : null}
       </div>
     </div>
   );

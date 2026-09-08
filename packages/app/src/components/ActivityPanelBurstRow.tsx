@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { useAgentDiffView } from '@/lib/agent-diff-store';
+import { useDocumentReviewView } from '@/lib/document-review/store';
 import type { BurstData } from '@/lib/use-activity-panel';
 
 interface ActivityPanelBurstRowProps {
@@ -60,9 +60,12 @@ export function ActivityPanelBurstRow({
   }, []);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const activeDiff = useAgentDiffView();
+  const activeReview = useDocumentReviewView();
   const burstNumber = burst.stackIndex + 1;
-  const isActive = activeDiff?.docName === docName && activeDiff.keptCount === burstNumber;
+  const isActive =
+    activeReview?.source.kind === 'agent' &&
+    activeReview.source.docName === docName &&
+    activeReview.source.keptCount === burstNumber;
 
   const laterEdits = editCount - burstNumber;
   const restoreDisabled = !sessionAlive || inFlight || laterEdits <= 0;

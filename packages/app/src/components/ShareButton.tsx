@@ -24,9 +24,10 @@ const COPY_SHORTCUT = { mac: '⌘ C', windowsLinux: 'Ctrl C' };
 export interface ShareButtonProps {
   input: ShareTargetInput | null;
   onClickWhenNoRemote: () => void;
+  compact?: boolean;
 }
 
-export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
+export function ShareButton({ input, onClickWhenNoRemote, compact = false }: ShareButtonProps) {
   const { t } = useLingui();
   const { status } = useGitSyncStatusDetailed();
   const [busy, setBusy] = useState(false);
@@ -101,15 +102,15 @@ export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
       <PopoverAnchor asChild>
         <Button
           variant="ghost"
-          size="sm"
+          size={compact ? 'icon-sm' : 'sm'}
           aria-label={input?.kind === 'folder' ? t`Share folder` : t`Share doc`}
           onClick={handleClick}
           disabled={busy || triggerDisabled}
-          className="gap-1.5 text-muted-foreground px-1.5"
+          className={cn('text-muted-foreground', compact ? 'size-7' : 'gap-1.5 px-1.5')}
           data-testid="share-button"
         >
           <Share2 className="size-3.5" aria-hidden />
-          <Trans>Share</Trans>
+          {compact ? null : <Trans>Share</Trans>}
         </Button>
       </PopoverAnchor>
       <PopoverContent

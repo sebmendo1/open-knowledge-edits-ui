@@ -626,7 +626,10 @@ function AppBody() {
             {!singleFile && !noteWindow && (
               <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />
             )}
-            <SidebarInset className="overflow-hidden h-[calc(100vh-var(--layout-inset-offset))]">
+            <SidebarInset
+              className="h-screen overflow-hidden peer-data-[variant=inset]:m-0 peer-data-[variant=inset]:rounded-none peer-data-[variant=inset]:shadow-none"
+              style={{ ['--layout-inset-offset' as string]: '0px' }}
+            >
               <EditorPane onOpenSearch={() => setCommandPaletteOpen(true)} />
             </SidebarInset>
           </SidebarProvider>

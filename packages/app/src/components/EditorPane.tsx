@@ -34,6 +34,7 @@ import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
 import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
@@ -114,21 +115,42 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const [editorMode, setEditorMode] = useState<EditorMode>(persistedMode);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
-  const authPromptPending = useSyncExternalStore(
+  const authPromptStep = useSyncExternalStore(
     authPromptStore.subscribe,
     authPromptStore.getSnapshot,
-    () => false,
+    () => null,
   );
   useEffect(() => {
-    if (!authPromptPending) return;
+    if (authPromptStep === null) return;
     authPromptStore.clear();
-    setAuthInitialStep('auth');
+    setAuthInitialStep(authPromptStep);
     setAuthModalOpen(true);
-  }, [authPromptPending]);
+  }, [authPromptStep]);
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
-  const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
+  const panelTabBeforeAgentsRef = useRef<PanelTab>('outline');
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const noteWindow = isNoteWindow();
+  const agentsVisible = !noteWindow && activeTab === 'agents';
+  const setAgentsVisible = useEffectEvent((visible: boolean) => {
+    if (visible) {
+      setActiveTab((tab) => {
+        if (tab !== 'agents') panelTabBeforeAgentsRef.current = tab;
+        return 'agents';
+      });
+    } else {
+      setActiveTab(panelTabBeforeAgentsRef.current);
+    }
+  });
+  const toggleAgentsPanel = useEffectEvent(() => {
+    setActiveTab((tab) => {
+      if (tab === 'agents') return panelTabBeforeAgentsRef.current;
+      panelTabBeforeAgentsRef.current = tab;
+      return 'agents';
+    });
+  });
+  const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
+  const singleFile = useSingleFileMode();
+  const showWorkspaceHeader = noteWindow || singleFile;
   const terminalAvailable =
     !noteWindow &&
     desktopBridge != null &&
@@ -146,7 +168,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     writeTerminalRightWidth(terminalRightWidth);
   }, [terminalRightWidth]);
-  const [agentsVisible, setAgentsVisible] = useState(false);
   const installedClis = useInstalledClis();
   const [dockRestoreSettled, setDockRestoreSettled] = useState(false);
   const restoreRevealRef = useRef(false);
@@ -166,10 +187,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   function launchNewChat() {
     requestPreferredSession();
-  }
-
-  function revealAgents() {
-    setAgentsVisible(true);
   }
 
   const syncStatus = useGitSyncStatus();
@@ -224,7 +241,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         setTerminalVisible(true);
       } else if (action === 'toggle-agent-panel') {
         if (sendSelectionToAgentsEvent()) return;
-        setAgentsVisible((visible) => !visible);
+        toggleAgentsPanel();
       }
     });
   }, [noteWindow]);
@@ -249,7 +266,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       if (isOverlayLayerOpen()) return;
       event.preventDefault();
       if (sendSelectionToAgentsEvent()) return;
-      setAgentsVisible((visible) => !visible);
+      toggleAgentsPanel();
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
@@ -358,7 +375,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       .getDockState()
       .then((state) => {
         if (cancelled) return;
-        if (state.agentPanelVisible) setAgentsVisible(true);
+        if (state.agentPanelVisible) setActiveTab('agents');
         if (!state.terminalVisible) return;
         restoreRevealRef.current = true;
         setTerminalRestoreRevealNonce((nonce) => nonce + 1);
@@ -479,31 +496,34 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             agentsVisible={noteWindow ? false : agentsVisible}
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
-            onRevealAgents={noteWindow ? undefined : revealAgents}
-            renderWorkspaceHeader={(tabs) => (
-              <EditorHeader
-                noteModeToggle={
-                  noteWindow && activeDocName !== null && !isEditableTextDocFile(activeDocName) ? (
-                    <NoteWindowModeToggle
-                      provider={activeProvider}
-                      editorMode={editorMode}
-                      onModeChange={handleModeChange}
-                    />
-                  ) : null
-                }
-                onSignIn={() => {
-                  setAuthInitialStep('auth');
-                  setAuthModalOpen(true);
-                }}
-                onSetIdentity={() => {
-                  setAuthInitialStep('identity');
-                  setAuthModalOpen(true);
-                }}
-                onOpenSearch={onOpenSearch}
-              >
-                {tabs}
-              </EditorHeader>
-            )}
+            renderWorkspaceHeader={(tabs) =>
+              showWorkspaceHeader ? (
+                <EditorHeader
+                  noteModeToggle={
+                    noteWindow &&
+                    activeDocName !== null &&
+                    !isEditableTextDocFile(activeDocName) ? (
+                      <NoteWindowModeToggle
+                        provider={activeProvider}
+                        editorMode={editorMode}
+                        onModeChange={handleModeChange}
+                      />
+                    ) : null
+                  }
+                  onSignIn={() => {
+                    setAuthInitialStep('auth');
+                    setAuthModalOpen(true);
+                  }}
+                  onSetIdentity={() => {
+                    setAuthInitialStep('identity');
+                    setAuthModalOpen(true);
+                  }}
+                  onOpenSearch={onOpenSearch}
+                >
+                  {tabs}
+                </EditorHeader>
+              ) : null
+            }
           />
         </div>
       </div>
@@ -530,7 +550,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             surface="terminal-dock"
             terminalPlacement={terminalPlacement}
             onTerminalPlacementChange={setTerminalPlacement}
-            reserveRightRevealTabGutter={terminalPlacement === 'right' && !agentsVisible}
+            reserveRightRevealTabGutter={terminalPlacement === 'right'}
             bridge={desktopBridge}
             terminalCapable
             visible={terminalVisible}

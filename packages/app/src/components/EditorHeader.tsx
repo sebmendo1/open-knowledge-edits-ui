@@ -1,6 +1,5 @@
 // biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
 
-import { parseManagedArtifactName } from '@inkeep/open-knowledge-core';
 import { useLingui } from '@lingui/react/macro';
 import { Search } from 'lucide-react';
 import { lazy, type ReactNode, Suspense, useLayoutEffect, useRef, useState } from 'react';
@@ -11,26 +10,14 @@ import { Kbd } from '@/components/ui/kbd';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { WorkspaceChromeActions } from '@/components/WorkspaceChromeActions';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { formatShortcut, formatShortcutLabel } from '@/lib/keyboard-shortcuts';
 import { isNoteWindow } from '@/lib/note-window-mode';
-import {
-  buildDocShareInput,
-  buildFolderShareInput,
-  type ShareTargetInput,
-} from '@/lib/share/run-share-action';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { cn } from '@/lib/utils';
-import { PresenceBar } from '@/presence/PresenceBar';
-import { BetaBadge } from './BetaBadge';
 import { EditorBreadcrumb } from './EditorBreadcrumb';
-import { HelpPopover } from './HelpPopover';
-import { InstanceBadge } from './InstanceBadge';
 import { NavigationHistoryControls } from './NavigationHistoryControls';
-import { PublishToGitHubDialog } from './PublishToGitHubDialog';
-import { SettingsButton } from './SettingsButton';
-import { ShareButton } from './ShareButton';
-import { SyncStatusBadge } from './SyncStatusBadge';
 
 const AppMenubar = lazy(() =>
   import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
@@ -52,8 +39,7 @@ export function EditorHeader({
   onOpenSearch,
 }: EditorHeaderProps) {
   const { t } = useLingui();
-  const { activeDocName, activeTarget } = useDocumentContext();
-  const managedArtifact = activeDocName ? parseManagedArtifactName(activeDocName) : null;
+  const { activeDocName } = useDocumentContext();
   const { state: sidebarState } = useSidebar();
   const singleFile = useSingleFileMode();
   const noteWindow = isNoteWindow();
@@ -62,24 +48,11 @@ export function EditorHeader({
   const sidebarShortcutLabel = formatShortcutLabel('toggle-files-sidebar');
   const searchShortcut = formatShortcut('command-palette');
   const searchShortcutLabel = formatShortcutLabel('command-palette');
-  const [publishOpen, setPublishOpen] = useState(false);
   const [chromeMeasured, setChromeMeasured] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
   const leadingActionsRef = useRef<HTMLDivElement>(null);
   const tabsHostRef = useRef<HTMLDivElement>(null);
   const trailingActionsRef = useRef<HTMLDivElement>(null);
-  const shareInput: ShareTargetInput | null = (() => {
-    if (activeTarget?.kind === 'folder') {
-      return buildFolderShareInput(activeTarget.folderPath);
-    }
-    if (activeDocName && !managedArtifact) {
-      return buildDocShareInput(activeDocName);
-    }
-    if (!activeTarget && !activeDocName) {
-      return buildFolderShareInput('');
-    }
-    return null;
-  })();
 
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const isCollapsed = sidebarState === 'collapsed';
@@ -127,23 +100,6 @@ export function EditorHeader({
       observer?.disconnect();
     };
   }, []);
-
-  const headerActions = (
-    <>
-      {}
-      {!reducedChrome && (
-        <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
-      )}
-      {!noteWindow && <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />}
-      <PresenceBar />
-      <Separator orientation="vertical" className="h-4 shrink-0 data-vertical:self-center" />
-      <InstanceBadge />
-      <BetaBadge />
-      {}
-      {!reducedChrome && <SettingsButton />}
-      {!noteWindow && <HelpPopover />}
-    </>
-  );
 
   return (
     <header
@@ -264,10 +220,13 @@ export function EditorHeader({
           isElectronHost && 'mr-[var(--ok-titlebar-reserve-right,0px)]',
         )}
       >
-        {!noteWindow && headerActions}
-        {!reducedChrome && (
-          <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
-        )}
+        {!noteWindow ? (
+          <WorkspaceChromeActions
+            layout="header"
+            onSignIn={onSignIn}
+            onSetIdentity={onSetIdentity}
+          />
+        ) : null}
       </div>
     </header>
   );
