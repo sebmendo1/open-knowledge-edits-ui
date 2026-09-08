@@ -1,8 +1,7 @@
 export const DOC_PANEL_ID = 'doc-panel';
 export const TERMINAL_COLUMN_ID = 'terminal-column';
-export const AGENTS_COLUMN_ID = 'agents-column';
 
-export const RIGHT_RAIL_PANEL_ORDER = [DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID] as const;
+export const RIGHT_RAIL_PANEL_ORDER = [DOC_PANEL_ID, TERMINAL_COLUMN_ID] as const;
 
 export type RightRailPanelId = (typeof RIGHT_RAIL_PANEL_ORDER)[number];
 

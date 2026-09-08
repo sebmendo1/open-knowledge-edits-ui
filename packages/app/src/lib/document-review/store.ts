@@ -60,6 +60,7 @@ export function openDocumentReviewFromTimeline(view: TimelineDiffView): void {
     notify();
     return;
   }
+  // WARN: setDocumentReviewChanges has no callers; non-demo reviews keep an empty change index
   current = freshReviewView({
     source,
     agentDisplayName: view.authorName,
@@ -95,6 +96,7 @@ export function openDocumentReviewFromAgent(view: AgentDiffView): void {
     notify();
     return;
   }
+  // WARN: setDocumentReviewChanges has no callers; non-demo reviews keep an empty change index
   current = freshReviewView({
     source,
     agentDisplayName: view.agentName,

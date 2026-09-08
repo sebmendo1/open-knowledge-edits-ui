@@ -127,9 +127,28 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     setAuthModalOpen(true);
   }, [authPromptStep]);
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
-  const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
+  const panelTabBeforeAgentsRef = useRef<PanelTab>('outline');
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const noteWindow = isNoteWindow();
+  const agentsVisible = !noteWindow && activeTab === 'agents';
+  const setAgentsVisible = useEffectEvent((visible: boolean) => {
+    if (visible) {
+      setActiveTab((tab) => {
+        if (tab !== 'agents') panelTabBeforeAgentsRef.current = tab;
+        return 'agents';
+      });
+    } else {
+      setActiveTab(panelTabBeforeAgentsRef.current);
+    }
+  });
+  const toggleAgentsPanel = useEffectEvent(() => {
+    setActiveTab((tab) => {
+      if (tab === 'agents') return panelTabBeforeAgentsRef.current;
+      panelTabBeforeAgentsRef.current = tab;
+      return 'agents';
+    });
+  });
+  const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
   const singleFile = useSingleFileMode();
   const showWorkspaceHeader = noteWindow || singleFile;
   const terminalAvailable =
@@ -149,7 +168,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     writeTerminalRightWidth(terminalRightWidth);
   }, [terminalRightWidth]);
-  const [agentsVisible, setAgentsVisible] = useState(false);
   const installedClis = useInstalledClis();
   const [dockRestoreSettled, setDockRestoreSettled] = useState(false);
   const restoreRevealRef = useRef(false);
@@ -169,10 +187,6 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   function launchNewChat() {
     requestPreferredSession();
-  }
-
-  function revealAgents() {
-    setAgentsVisible(true);
   }
 
   const syncStatus = useGitSyncStatus();
@@ -227,7 +241,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         setTerminalVisible(true);
       } else if (action === 'toggle-agent-panel') {
         if (sendSelectionToAgentsEvent()) return;
-        setAgentsVisible((visible) => !visible);
+        toggleAgentsPanel();
       }
     });
   }, [noteWindow]);
@@ -252,7 +266,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       if (isOverlayLayerOpen()) return;
       event.preventDefault();
       if (sendSelectionToAgentsEvent()) return;
-      setAgentsVisible((visible) => !visible);
+      toggleAgentsPanel();
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
@@ -361,7 +375,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       .getDockState()
       .then((state) => {
         if (cancelled) return;
-        if (state.agentPanelVisible) setAgentsVisible(true);
+        if (state.agentPanelVisible) setActiveTab('agents');
         if (!state.terminalVisible) return;
         restoreRevealRef.current = true;
         setTerminalRestoreRevealNonce((nonce) => nonce + 1);
@@ -482,12 +496,13 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             agentsVisible={noteWindow ? false : agentsVisible}
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
-            onRevealAgents={noteWindow ? undefined : revealAgents}
             renderWorkspaceHeader={(tabs) =>
               showWorkspaceHeader ? (
                 <EditorHeader
                   noteModeToggle={
-                    noteWindow && activeDocName !== null && !isEditableTextDocFile(activeDocName) ? (
+                    noteWindow &&
+                    activeDocName !== null &&
+                    !isEditableTextDocFile(activeDocName) ? (
                       <NoteWindowModeToggle
                         provider={activeProvider}
                         editorMode={editorMode}
@@ -535,7 +550,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             surface="terminal-dock"
             terminalPlacement={terminalPlacement}
             onTerminalPlacementChange={setTerminalPlacement}
-            reserveRightRevealTabGutter={terminalPlacement === 'right' && !agentsVisible}
+            reserveRightRevealTabGutter={terminalPlacement === 'right'}
             bridge={desktopBridge}
             terminalCapable
             visible={terminalVisible}

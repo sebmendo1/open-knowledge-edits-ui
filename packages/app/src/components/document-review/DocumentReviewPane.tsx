@@ -180,8 +180,8 @@ export function DocumentReviewPane({
               };
 
   const rendered = body.status === 'ready' ? computeRenderedDiff(body.before, body.after) : null;
-  const usingRendered =
-    (view.marksHidden || view.renderMode === 'rendered') && rendered?.ok === true;
+  const usingRendered = view.renderMode === 'rendered' && rendered?.ok === true;
+  const usingCleanAfter = view.marksHidden && body.status === 'ready';
 
   const reviewOptions =
     !view.marksHidden && rendered?.ok === true && view.changes.length > 0
@@ -298,15 +298,26 @@ export function DocumentReviewPane({
           <PropertyDiffBlock delta={body.properties} />
         ) : null}
         {body.status === 'ready' &&
-          (usingRendered && rendered?.ok ? (
+          (usingCleanAfter ? (
+            rendered?.ok ? (
+              <ReviewRenderedDiffView
+                diff={rendered}
+                reviewOptions={undefined}
+                marksHidden
+                selectedChange={null}
+              />
+            ) : (
+              <pre className="document-review-scroll min-h-0 flex-1 overflow-auto whitespace-pre-wrap px-6 py-4 font-mono text-xs text-foreground/90 subtle-scrollbar">
+                {body.after}
+              </pre>
+            )
+          ) : usingRendered ? (
             <ReviewRenderedDiffView
               diff={rendered}
               reviewOptions={reviewOptions}
-              marksHidden={view.marksHidden}
-              selectedChange={view.marksHidden ? null : selectedChange}
-              onRestoreChange={
-                !view.marksHidden && selectedChange !== null ? handleRestoreChange : undefined
-              }
+              marksHidden={false}
+              selectedChange={selectedChange}
+              onRestoreChange={isDemo && selectedChange !== null ? handleRestoreChange : undefined}
             />
           ) : body.diff === '' ? (
             <>

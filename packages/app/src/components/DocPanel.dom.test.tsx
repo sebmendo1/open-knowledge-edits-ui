@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -74,11 +75,34 @@ vi.doMock('@/components/ProblemsPanel', () => ({
   },
 }));
 
+let reviewActiveValue = false;
+let reviewChangesValue: Array<{
+  id: string;
+  time: string;
+  section: string;
+  summary: string;
+  kind: 'add';
+  additions: number;
+  deletions: number;
+  anchorIndex: number;
+}> = [];
+vi.doMock('@/lib/document-review/store', () => ({
+  useDocumentReviewActiveForDoc: () => reviewActiveValue,
+  useDocumentReviewView: () =>
+    reviewActiveValue
+      ? {
+          changes: reviewChangesValue,
+          selectedChangeId: null,
+        }
+      : null,
+  setDocumentReviewSelectedChange: () => {},
+}));
+
 const { DocPanel } = await import('./DocPanel');
 
-type Tab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems';
+type Tab = 'outline' | 'links' | 'graph' | 'timeline' | 'problems' | 'comments' | 'agents';
 
-function renderPanel(activeTab: Tab) {
+function renderPanel(activeTab: Tab, agentsSlot?: ReactNode) {
   return render(
     <TooltipProvider>
       <DocPanel
@@ -87,9 +111,14 @@ function renderPanel(activeTab: Tab) {
         activeTab={activeTab}
         onActiveTabChange={() => {}}
         mode="doc"
+        agentsSlot={agentsSlot}
       />
     </TooltipProvider>,
   );
+}
+
+async function openSwitcher() {
+  await userEvent.click(screen.getByTestId('doc-panel-switcher'));
 }
 
 afterEach(() => {
@@ -99,21 +128,25 @@ afterEach(() => {
   activeProviderValue = null;
   terminalLaunchValue = null;
   lastProblemsProps = null;
+  reviewActiveValue = false;
+  reviewChangesValue = [];
 });
 
 describe('DocPanel — tab gating', () => {
-  test('project mode renders the full tab strip (outline + links + graph + timeline + problems + comments)', () => {
+  test('project mode lists all seven surfaces in the dropdown', async () => {
     singleFileValue = false;
     renderPanel('outline');
-    expect(screen.getAllByRole('tab')).toHaveLength(6);
+    await openSwitcher();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(7);
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 
-  test('single-file mode keeps Outline + Problems + Comments', () => {
+  test('single-file mode keeps Outline + Problems + Comments', async () => {
     singleFileValue = true;
     renderPanel('graph');
-    expect(screen.getAllByRole('tab')).toHaveLength(3);
-    expect(screen.getByRole('tab', { name: /comments/i })).toBeTruthy();
+    await openSwitcher();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3);
+    expect(screen.getByTestId('doc-panel-switcher-item-comments')).toBeTruthy();
     expect(screen.getByTestId('outline-panel')).toBeTruthy();
   });
 
@@ -121,7 +154,13 @@ describe('DocPanel — tab gating', () => {
     renderPanel('problems');
     expect(screen.getByTestId('problems-panel')).toBeTruthy();
     expect(lastProblemsProps?.docName).toBe('notes');
-    expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
+    expect(document.getElementById('panel-problems')).toBeTruthy();
+  });
+
+  test('renders the agents slot when the agents surface is active', () => {
+    renderPanel('agents', <div data-testid="agents-slot" />);
+    expect(screen.getByTestId('agents-slot')).toBeTruthy();
+    expect(document.getElementById('panel-agents')).toBeTruthy();
   });
 });
 
@@ -159,21 +198,67 @@ describe('DocPanel — Problems fix/ask-ai wiring', () => {
 });
 
 describe('DocPanel — Problems badge', () => {
-  test('no badge when there are no diagnostics', () => {
+  test('no badge when there are no diagnostics', async () => {
     diagnosticsValue = [];
     renderPanel('outline');
+    await openSwitcher();
     expect(screen.queryByText('3')).toBeNull();
   });
 
-  test('shows the diagnostic count on the Problems tab', () => {
+  test('shows the diagnostic count on the Problems menu item', async () => {
     diagnosticsValue = [{ severity: 'warning' }, { severity: 'error' }, { severity: 'warning' }];
     renderPanel('outline');
+    await openSwitcher();
     expect(screen.getByText('3')).toBeTruthy();
   });
 
-  test('caps the badge at 99+', () => {
+  test('caps the badge at 99+', async () => {
     diagnosticsValue = Array.from({ length: 150 }, () => ({ severity: 'warning' }));
     renderPanel('outline');
+    await openSwitcher();
     expect(screen.getByText('99+')).toBeTruthy();
+  });
+});
+
+describe('DocPanel — document review tab routing', () => {
+  test('outline tab shows the change index while review is active', () => {
+    reviewActiveValue = true;
+    reviewChangesValue = [
+      {
+        id: 'pricing-table',
+        time: '10:42',
+        section: 'Pricing tiers',
+        summary: 'Replaced the pricing table — 4 tiers → 3',
+        kind: 'add',
+        additions: 4,
+        deletions: 5,
+        anchorIndex: 0,
+      },
+    ];
+    renderPanel('outline');
+    expect(screen.getByTestId('change-index-panel')).toBeTruthy();
+    expect(screen.queryByTestId('outline-panel')).toBeNull();
+    expect(screen.getByTestId('doc-panel-switcher').textContent?.toLowerCase()).toContain(
+      'changes',
+    );
+  });
+
+  test('non-outline tabs keep their original panels during review', () => {
+    reviewActiveValue = true;
+    reviewChangesValue = [
+      {
+        id: 'customers-add',
+        time: '10:47',
+        section: 'Customers',
+        summary: 'Added two paragraphs',
+        kind: 'add',
+        additions: 2,
+        deletions: 0,
+        anchorIndex: 1,
+      },
+    ];
+    renderPanel('timeline');
+    expect(screen.getByTestId('timeline-panel')).toBeTruthy();
+    expect(screen.queryByTestId('change-index-panel')).toBeNull();
   });
 });

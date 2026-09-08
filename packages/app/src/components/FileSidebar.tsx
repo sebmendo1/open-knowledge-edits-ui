@@ -14,7 +14,15 @@ import {
   SquarePen,
   UnfoldVertical,
 } from 'lucide-react';
-import { type FC, lazy, type MouseEventHandler, Suspense, useEffect, useRef, useState } from 'react';
+import {
+  type FC,
+  lazy,
+  type MouseEventHandler,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
@@ -47,7 +55,6 @@ import {
 } from '@/components/skills-section-visible-cache';
 import { TemplateMenuRows } from '@/components/template-menu-rows';
 import { UpdateNotices } from '@/components/UpdateNotices';
-import { WorkspaceChromeActions } from '@/components/WorkspaceChromeActions';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -84,6 +91,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { WorkspaceChromeActions } from '@/components/WorkspaceChromeActions';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';

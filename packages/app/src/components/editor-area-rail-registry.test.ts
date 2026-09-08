@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 import {
-  AGENTS_COLUMN_ID,
   accountRailLayout,
   DOC_PANEL_ID,
   findResidualPanelId,
@@ -25,12 +24,8 @@ function powerset<T>(items: readonly T[]): T[][] {
 }
 
 describe('right-rail panel registry', () => {
-  test('registers exactly the three rail peers in canonical order', () => {
-    expect([...RIGHT_RAIL_PANEL_ORDER]).toEqual([
-      DOC_PANEL_ID,
-      TERMINAL_COLUMN_ID,
-      AGENTS_COLUMN_ID,
-    ]);
+  test('registers exactly the two rail peers in canonical order', () => {
+    expect([...RIGHT_RAIL_PANEL_ORDER]).toEqual([DOC_PANEL_ID, TERMINAL_COLUMN_ID]);
   });
 
   test('recognizes every registered id and rejects the editor', () => {
@@ -55,19 +50,19 @@ describe('residual editor discovery across reachable layouts', () => {
   });
 
   test('accounts cleanly for the full rail', () => {
-    const layout = [EDITOR, DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID];
-    const accounting = accountRailLayout(layout);
-    expect(accounting.ok).toBe(true);
-    expect(accounting.residualId).toBe(EDITOR);
-    expect(accounting.presentPeers).toEqual([DOC_PANEL_ID, TERMINAL_COLUMN_ID, AGENTS_COLUMN_ID]);
-  });
-
-  test('accounts cleanly for a narrow rail (agents closed)', () => {
     const layout = [EDITOR, DOC_PANEL_ID, TERMINAL_COLUMN_ID];
     const accounting = accountRailLayout(layout);
     expect(accounting.ok).toBe(true);
     expect(accounting.residualId).toBe(EDITOR);
     expect(accounting.presentPeers).toEqual([DOC_PANEL_ID, TERMINAL_COLUMN_ID]);
+  });
+
+  test('accounts cleanly for a narrow rail (terminal closed)', () => {
+    const layout = [EDITOR, DOC_PANEL_ID];
+    const accounting = accountRailLayout(layout);
+    expect(accounting.ok).toBe(true);
+    expect(accounting.residualId).toBe(EDITOR);
+    expect(accounting.presentPeers).toEqual([DOC_PANEL_ID]);
   });
 });
 
@@ -81,7 +76,7 @@ describe('the layout invariant fires on model defects', () => {
   });
 
   test('a layout missing the residual editor fails the invariant', () => {
-    const layout = [DOC_PANEL_ID, AGENTS_COLUMN_ID];
+    const layout = [DOC_PANEL_ID, TERMINAL_COLUMN_ID];
     expect(findResidualPanelId(layout)).toBeNull();
     expect(accountRailLayout(layout).ok).toBe(false);
   });

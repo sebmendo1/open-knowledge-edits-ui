@@ -106,10 +106,7 @@ export function ShareButton({ input, onClickWhenNoRemote, compact = false }: Sha
           aria-label={input?.kind === 'folder' ? t`Share folder` : t`Share doc`}
           onClick={handleClick}
           disabled={busy || triggerDisabled}
-          className={cn(
-            'text-muted-foreground',
-            compact ? 'size-7' : 'gap-1.5 px-1.5',
-          )}
+          className={cn('text-muted-foreground', compact ? 'size-7' : 'gap-1.5 px-1.5')}
           data-testid="share-button"
         >
           <Share2 className="size-3.5" aria-hidden />
