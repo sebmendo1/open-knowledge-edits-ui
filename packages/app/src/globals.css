@@ -6369,6 +6369,69 @@ html.electron-mode [data-slot="sidebar-inner"] {
   cursor: default;
 }
 
+.document-review-body {
+  position: relative;
+  padding-inline-start: 1.75rem;
+}
+
+.document-review-scroll .ProseMirror .ok-diff-selected.ok-diff-ins,
+.document-review-scroll .ProseMirror .ok-diff-selected.ok-diff-ins-block {
+  background-color: color-mix(in srgb, var(--color-emerald-500) 28%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-emerald-500) 45%, transparent);
+}
+
+.document-review-scroll .ProseMirror .ok-diff-selected.ok-diff-del,
+.document-review-scroll .ProseMirror .ok-diff-selected.ok-diff-del-block {
+  background-color: color-mix(in srgb, var(--color-red-500) 18%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-red-500) 40%, transparent);
+  opacity: 1;
+}
+
+.ok-diff-margin-chip {
+  position: absolute;
+  inset-inline-start: -1.5rem;
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+  translate: 0 -0.125rem;
+}
+
+.ok-diff-margin-chip-add {
+  color: var(--color-emerald-700);
+  background-color: color-mix(in srgb, var(--color-emerald-500) 22%, transparent);
+}
+
+.dark .ok-diff-margin-chip-add {
+  color: var(--color-emerald-400);
+}
+
+.ok-diff-margin-chip-del {
+  color: var(--color-red-700);
+  background-color: color-mix(in srgb, var(--color-red-500) 18%, transparent);
+}
+
+.dark .ok-diff-margin-chip-del {
+  color: var(--color-red-400);
+}
+
+.ok-diff-margin-chip-replace {
+  color: var(--color-foreground);
+  background-color: color-mix(in srgb, var(--color-muted-foreground) 16%, transparent);
+  width: 1.25rem;
+}
+
+.ok-diff-margin-chip-selected {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-foreground) 20%, transparent);
+}
+
+
 /* Mermaid WYSIWYG canvas (`mermaid-wysiwyg` package). The package injects its
    own `<style data-mw>` at runtime with `--mw-*` custom-property hooks for all
    interaction chrome (selection glow, popovers, in-place editors, plus-menus).

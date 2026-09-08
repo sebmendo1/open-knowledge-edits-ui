@@ -9,8 +9,9 @@ import { withLargeFileOpenGuard } from '@/components/navigation-targets';
 import { usePageList } from '@/components/PageListContext';
 import { Spinner } from '@/components/ui/spinner';
 import { useDocumentContext, useDocumentTransition } from '@/editor/DocumentContext';
-import { openAgentDiff, setAgentDiffMax } from '@/lib/agent-diff-store';
+import { setAgentDiffMax } from '@/lib/agent-diff-store';
 import { hashFromDocName } from '@/lib/doc-hash';
+import { openDocumentReviewFromAgent } from '@/lib/document-review/store';
 import { closeTimelineDiff } from '@/lib/timeline-diff-store';
 import type { FileData } from '@/lib/use-activity-panel';
 import { useActivityPanel } from '@/lib/use-activity-panel';
@@ -329,7 +330,7 @@ export function ActivityModeContent({
     if (!data?.agent || docPanelAgentId === null) return;
     closeTimelineDiff();
     const max = file.bursts.length;
-    openAgentDiff({
+    openDocumentReviewFromAgent({
       agentId: docPanelAgentId,
       agentName: data.agent.displayName,
       agentColor: data.agent.color,

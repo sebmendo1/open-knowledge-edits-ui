@@ -44,12 +44,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { closeAgentDiff } from '@/lib/agent-diff-store';
-import { createSelfSchedulingPoll, type PollOutcome } from '@/lib/self-scheduling-poll';
 import {
-  closeTimelineDiff,
-  openTimelineDiff,
-  useTimelineDiffView,
-} from '@/lib/timeline-diff-store';
+  closeDocumentReview,
+  openDocumentReviewFromTimeline,
+  useDocumentReviewView,
+} from '@/lib/document-review/store';
+import { createSelfSchedulingPoll, type PollOutcome } from '@/lib/self-scheduling-poll';
+import { closeTimelineDiff } from '@/lib/timeline-diff-store';
 
 const TIMELINE_POLL_BASE_MS = 10_000;
 const TIMELINE_POLL_MAX_BACKOFF_MS = 60_000;
@@ -379,8 +380,11 @@ function EntryRow({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const activeDiff = useTimelineDiffView();
-  const isActive = activeDiff?.docName === docName && activeDiff.sha === entry.sha;
+  const activeReview = useDocumentReviewView();
+  const isActive =
+    activeReview?.source.kind === 'timeline' &&
+    activeReview.source.docName === docName &&
+    activeReview.source.sha === entry.sha;
 
   useEffect(() => {
     return () => abortRef.current?.abort();
@@ -388,7 +392,7 @@ function EntryRow({
 
   const handleActivate = () => {
     closeAgentDiff();
-    openTimelineDiff({
+    openDocumentReviewFromTimeline({
       docName,
       sha: entry.sha,
       parentSha: entry.parentSha ?? null,
@@ -614,6 +618,7 @@ export function TimelineContent({ docName }: TimelineContentProps) {
 
   function handleRestoreSuccess() {
     closeTimelineDiff();
+    closeDocumentReview();
   }
 
   useEffect(() => {

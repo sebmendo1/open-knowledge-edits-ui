@@ -515,10 +515,8 @@ describe('EditorPane session-panel wiring', () => {
     expect(agents.getAttribute('data-has-bridge')).toBe('false');
     expect(agents.getAttribute('data-terminal-capable')).toBe('false');
     expect(screen.queryByTestId('terminal-dock')).toBeNull();
-    expect(screen.getByTestId('editor-header')).toBeTruthy();
-    expect(screen.getByTestId('editor-header').contains(screen.getByTestId('workspace-tabs'))).toBe(
-      true,
-    );
+    expect(screen.queryByTestId('editor-header')).toBeNull();
+    expect(screen.queryByTestId('workspace-tabs')).toBeNull();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
   });
 
@@ -526,7 +524,7 @@ describe('EditorPane session-panel wiring', () => {
     (window as { okDesktop?: unknown }).okDesktop = makeOkDesktopStub().stub;
     await renderEditorPane();
 
-    expect(screen.getByTestId('editor-header')).toBeTruthy();
+    expect(screen.queryByTestId('editor-header')).toBeNull();
     expect(screen.getByTestId('editor-area')).toBeTruthy();
     for (const testid of ['terminal-dock', 'agents-panel']) {
       const panel = screen.getByTestId(testid);

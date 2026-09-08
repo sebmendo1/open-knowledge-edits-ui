@@ -34,6 +34,7 @@ import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { useSingleFileMode } from '@/lib/single-file-mode';
 import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
 import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
@@ -114,21 +115,23 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const [editorMode, setEditorMode] = useState<EditorMode>(persistedMode);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
-  const authPromptPending = useSyncExternalStore(
+  const authPromptStep = useSyncExternalStore(
     authPromptStore.subscribe,
     authPromptStore.getSnapshot,
-    () => false,
+    () => null,
   );
   useEffect(() => {
-    if (!authPromptPending) return;
+    if (authPromptStep === null) return;
     authPromptStore.clear();
-    setAuthInitialStep('auth');
+    setAuthInitialStep(authPromptStep);
     setAuthModalOpen(true);
-  }, [authPromptPending]);
+  }, [authPromptStep]);
   const [activeTab, setActiveTab] = useState<PanelTab>(TABS[0].id);
   const [autoSyncOnboardingDismissed, setAutoSyncOnboardingDismissed] = useState(false);
   const desktopBridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const noteWindow = isNoteWindow();
+  const singleFile = useSingleFileMode();
+  const showWorkspaceHeader = noteWindow || singleFile;
   const terminalAvailable =
     !noteWindow &&
     desktopBridge != null &&
@@ -480,30 +483,32 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             onAgentsVisibleChange={setAgentsVisible}
             onSessionPlacements={setPlacements}
             onRevealAgents={noteWindow ? undefined : revealAgents}
-            renderWorkspaceHeader={(tabs) => (
-              <EditorHeader
-                noteModeToggle={
-                  noteWindow && activeDocName !== null && !isEditableTextDocFile(activeDocName) ? (
-                    <NoteWindowModeToggle
-                      provider={activeProvider}
-                      editorMode={editorMode}
-                      onModeChange={handleModeChange}
-                    />
-                  ) : null
-                }
-                onSignIn={() => {
-                  setAuthInitialStep('auth');
-                  setAuthModalOpen(true);
-                }}
-                onSetIdentity={() => {
-                  setAuthInitialStep('identity');
-                  setAuthModalOpen(true);
-                }}
-                onOpenSearch={onOpenSearch}
-              >
-                {tabs}
-              </EditorHeader>
-            )}
+            renderWorkspaceHeader={(tabs) =>
+              showWorkspaceHeader ? (
+                <EditorHeader
+                  noteModeToggle={
+                    noteWindow && activeDocName !== null && !isEditableTextDocFile(activeDocName) ? (
+                      <NoteWindowModeToggle
+                        provider={activeProvider}
+                        editorMode={editorMode}
+                        onModeChange={handleModeChange}
+                      />
+                    ) : null
+                  }
+                  onSignIn={() => {
+                    setAuthInitialStep('auth');
+                    setAuthModalOpen(true);
+                  }}
+                  onSetIdentity={() => {
+                    setAuthInitialStep('identity');
+                    setAuthModalOpen(true);
+                  }}
+                  onOpenSearch={onOpenSearch}
+                >
+                  {tabs}
+                </EditorHeader>
+              ) : null
+            }
           />
         </div>
       </div>

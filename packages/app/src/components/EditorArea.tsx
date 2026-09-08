@@ -68,6 +68,12 @@ import {
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { docNameFromHash, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { getInitialDocPanelWidth, writeDocPanelWidth } from '@/lib/doc-panel-width-store';
+import { isBillingInvoicesDemoDoc } from '@/lib/document-review/demo-billing-invoices';
+import {
+  closeDocumentReview,
+  openDocumentReviewDemo,
+  useDocumentReviewView,
+} from '@/lib/document-review/store';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
@@ -201,13 +207,9 @@ function PaneDocumentToolbar({
   );
 }
 
-const LazyTimelineDiffPane = lazy(async () => {
-  const mod = await import('@/components/TimelineDiffPane');
-  return { default: mod.TimelineDiffPane };
-});
-const LazyAgentDiffPane = lazy(async () => {
-  const mod = await import('@/components/AgentDiffPane');
-  return { default: mod.AgentDiffPane };
+const LazyDocumentReviewPaneHost = lazy(async () => {
+  const mod = await import('@/components/document-review/DocumentReviewPane');
+  return { default: mod.DocumentReviewPaneHost };
 });
 
 const DOC_PANEL_MIN_WIDTH_PX = 300;
@@ -318,9 +320,41 @@ function EditorAreaInner({
   const showStats = !!activeDocName && activeTarget?.kind !== 'folder';
   const editorPlaceholder = isNewDoc ? t`Start writing to create this page` : undefined;
   const timelineDiff = useTimelineDiffView();
+  const documentReview = useDocumentReviewView();
   useEffect(() => {
     if (timelineDiff && timelineDiff.docName !== activeDocName) closeTimelineDiff();
   }, [activeDocName, timelineDiff]);
+  useEffect(() => {
+    if (documentReview && documentReview.source.docName !== activeDocName) closeDocumentReview();
+  }, [activeDocName, documentReview]);
+  useEffect(() => {
+    if (activeDocName === null || !isBillingInvoicesDemoDoc(activeDocName)) return;
+    if (documentReview?.source.docName === activeDocName) return;
+    openDocumentReviewDemo(activeDocName);
+  }, [activeDocName, documentReview?.source.docName]);
+  const documentReviewDoc = documentReview?.source.docName ?? null;
+  const documentReviewNavTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (documentReviewDoc == null) {
+      documentReviewNavTargetRef.current = null;
+      return;
+    }
+    documentReviewNavTargetRef.current = documentReviewDoc;
+    if (documentReviewDoc !== activeDocName) {
+      const nextHash = hashFromDocName(documentReviewDoc);
+      if (isSameHash(window.location.hash, nextHash)) openDocumentTransition(documentReviewDoc);
+      else window.location.hash = nextHash;
+    }
+  }, [documentReviewDoc]);
+  useEffect(() => {
+    if (documentReviewDoc == null) return;
+    if (documentReviewDoc === activeDocName) {
+      documentReviewNavTargetRef.current = null;
+      return;
+    }
+    if (documentReviewNavTargetRef.current === documentReviewDoc) return;
+    closeDocumentReview();
+  }, [activeDocName, documentReviewDoc]);
   const agentDiff = useAgentDiffView();
   const agentDiffDoc = agentDiff?.docName ?? null;
   const agentDiffNavTargetRef = useRef<string | null>(null);
@@ -348,8 +382,11 @@ function EditorAreaInner({
   }, [activeDocName, agentDiffDoc]);
   useEffect(() => {
     const agentPanelOpen = docPanelMode === 'agent' && docPanelAgentId !== null;
-    if (!agentPanelOpen) closeAgentDiff();
-  }, [docPanelMode, docPanelAgentId]);
+    if (!agentPanelOpen) {
+      closeAgentDiff();
+      if (documentReview?.source.kind === 'agent') closeDocumentReview();
+    }
+  }, [docPanelMode, docPanelAgentId, documentReview?.source.kind]);
   const pendingReceiveNav = useSyncExternalStore(
     pendingReceiveNavStore.subscribe,
     pendingReceiveNavStore.getSnapshot,
@@ -1076,9 +1113,7 @@ function EditorAreaInner({
         agentsVisible,
         isEmbedded,
         activeDocName,
-      }) &&
-      !(timelineDiff && timelineDiff.docName === activeDocName) &&
-      !(agentDiff && agentDiffDoc === activeDocName);
+      }) && !(documentReview && documentReview.source.docName === activeDocName);
     const externalSkillEdit = activeDocName ? parseExternalSkillDocName(activeDocName) : null;
     const renderEditorContent = (activityMount: ReactNode) => (
       <div className="relative flex h-full flex-col">
@@ -1090,7 +1125,13 @@ function EditorAreaInner({
         ) : null}
         <div className="relative min-h-0 flex-1">
           {}
-          <div className="relative h-full">
+          <div
+            className={
+              documentReview && documentReview.source.docName === activeDocName
+                ? 'pointer-events-none invisible relative h-full'
+                : 'relative h-full'
+            }
+          >
             {activityMount}
             <FindReplaceController activeDocName={activeDocName} isSourceMode={isSourceMode} />
             {}
@@ -1106,27 +1147,19 @@ function EditorAreaInner({
                 {activeDocName !== null ? <MountStalledAffordance docName={activeDocName} /> : null}
               </div>
             ) : null}
-            {}
-            {timelineDiff && timelineDiff.docName === activeDocName ? (
-              <Suspense fallback={null}>
-                <LazyTimelineDiffPane
-                  view={timelineDiff}
-                  isPanelCollapsed={isCollapsed}
-                  onTogglePanel={togglePanel}
-                />
-              </Suspense>
-            ) : null}
-            {}
-            {agentDiff && agentDiffDoc === activeDocName ? (
-              <Suspense fallback={null}>
-                <LazyAgentDiffPane
-                  view={agentDiff}
-                  isPanelCollapsed={isCollapsed}
-                  onTogglePanel={togglePanel}
-                />
-              </Suspense>
-            ) : null}
           </div>
+          {}
+          {documentReview && documentReview.source.docName === activeDocName ? (
+            <Suspense fallback={null}>
+              <div className="absolute inset-0 z-[1] flex min-h-0 flex-col bg-background">
+                <LazyDocumentReviewPaneHost
+                  docName={activeDocName}
+                  isPanelCollapsed={isCollapsed}
+                  onTogglePanel={togglePanel}
+                />
+              </div>
+            </Suspense>
+          ) : null}
           {}
           {showBottomComposer ? (
             <BottomComposer

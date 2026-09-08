@@ -14,9 +14,10 @@ import {
   SquarePen,
   UnfoldVertical,
 } from 'lucide-react';
-import { type FC, type MouseEventHandler, useEffect, useRef, useState } from 'react';
+import { type FC, lazy, type MouseEventHandler, Suspense, useEffect, useRef, useState } from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
+import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { ConflictsSection } from '@/components/ConflictsSection';
 import { FeedbackCardMount } from '@/components/FeedbackCard';
 import { FileTree, type FileTreeHandle } from '@/components/FileTree';
@@ -46,6 +47,7 @@ import {
 } from '@/components/skills-section-visible-cache';
 import { TemplateMenuRows } from '@/components/template-menu-rows';
 import { UpdateNotices } from '@/components/UpdateNotices';
+import { WorkspaceChromeActions } from '@/components/WorkspaceChromeActions';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -122,6 +124,10 @@ import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { setViewMenuState } from '@/lib/view-menu-state-store';
 
+const AppMenubar = lazy(() =>
+  import('@/components/AppMenubar').then((m) => ({ default: m.AppMenubar })),
+);
+
 interface FileSidebarProps {
   onOpenSearch: () => void;
 }
@@ -182,6 +188,11 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const isExpanded = sidebarState === 'expanded';
   const isCollapsed = sidebarState === 'collapsed';
   const shouldFadeChrome = isElectronHost && isCollapsed;
+  const appMenubar = shouldShowAppMenubar() ? (
+    <Suspense fallback={null}>
+      <AppMenubar />
+    </Suspense>
+  ) : null;
 
   const [folderState, setFolderState] = useState(EMPTY_FOLDER_STATE);
 
@@ -579,6 +590,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                 />
               ) : null}
               <div className="ml-auto flex shrink-0 items-center gap-0.5 [&>*]:[-webkit-app-region:no-drag]">
+                {appMenubar}
                 {}
                 {isElectronHost && isExpanded ? <NavigationHistoryControls /> : null}
                 {}
@@ -764,6 +776,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                   </SidebarMenuItem>
                 </SidebarMenu>
               ) : null}
+              <WorkspaceChromeActions layout="sidebar" />
             </SidebarFooter>
             {}
             <SidebarRail

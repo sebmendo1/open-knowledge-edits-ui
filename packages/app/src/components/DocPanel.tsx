@@ -6,6 +6,7 @@ import { AlertTriangle, Clock, Link2, ListTree, MessageSquare, Network } from 'l
 import { lazy, Suspense, useEffect } from 'react';
 import { CommentsTab } from '@/comments/CommentsTab';
 import { setCommentsPanelOnScreen } from '@/comments/comments-panel-visibility';
+import { ChangeIndexPanel } from '@/components/document-review/ChangeIndexPanel';
 import {
   composeFixAllProblemsTerminalPaste,
   composeLintFixTerminalPaste,
@@ -25,6 +26,11 @@ import { useDocumentContext } from '@/editor/DocumentContext';
 import { useDocLintConfig } from '@/editor/lint-config-client';
 import { useDocDiagnostics } from '@/editor/useDocDiagnostics';
 import { useDocLinkFindings } from '@/editor/validation-audit-client';
+import {
+  setDocumentReviewSelectedChange,
+  useDocumentReviewActiveForDoc,
+  useDocumentReviewView,
+} from '@/lib/document-review/store';
 import { useSingleFileMode } from '@/lib/single-file-mode';
 import { type DocProblemCounts, patchDocValidationSource } from '@/lib/validation-store';
 
@@ -137,6 +143,8 @@ export function DocPanel({
     );
   };
   const singleFile = useSingleFileMode();
+  const reviewActive = useDocumentReviewActiveForDoc(docName);
+  const reviewView = useDocumentReviewView();
   const tabs = singleFile ? TABS.filter((tab) => SINGLE_FILE_TABS.includes(tab.id)) : TABS;
   const effectiveTab: PanelTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : 'outline';
   const showTabStrip = mode === 'doc' && tabs.length > 1;
@@ -194,42 +202,54 @@ export function DocPanel({
 
       {mode === 'doc' ? (
         <div
-          {...(showTabStrip
+          {...(showTabStrip && !reviewActive
             ? {
                 role: 'tabpanel' as const,
                 id: `panel-${effectiveTab}`,
                 'aria-labelledby': `tab-${effectiveTab}`,
               }
             : {})}
-          className="min-h-0 flex-1"
+          className="min-h-0 flex-1 overflow-auto subtle-scrollbar"
         >
-          {effectiveTab === 'outline' && (
-            <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
-          )}
-          {effectiveTab === 'links' && <LinksPanel docName={docName} />}
-          {effectiveTab === 'graph' && (
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  <Trans>Loading graph</Trans>
-                </div>
-              }
-            >
-              <LazyGraphPanel activeDocName={docName} />
-            </Suspense>
-          )}
-          {effectiveTab === 'timeline' && <TimelineContent docName={docName} />}
-          {effectiveTab === 'comments' && <CommentsTab docName={docName} />}
-          {effectiveTab === 'problems' && (
-            <ProblemsPanel
-              docName={docName}
-              diagnostics={diagnostics}
-              linkFindingsStatus={linkFindingsState.status}
-              onFix={lintProvider !== null ? handleFix : undefined}
-              onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
-              onAskAi={lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined}
-              onFixWithAi={terminalLaunch !== null ? handleFixWithAi : undefined}
+          {reviewActive && reviewView ? (
+            <ChangeIndexPanel
+              changes={reviewView.changes}
+              selectedChangeId={reviewView.selectedChangeId}
+              onSelect={setDocumentReviewSelectedChange}
             />
+          ) : (
+            <>
+              {effectiveTab === 'outline' && (
+                <OutlinePanel docName={docName} isSourceMode={isSourceMode} />
+              )}
+              {effectiveTab === 'links' && <LinksPanel docName={docName} />}
+              {effectiveTab === 'graph' && (
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                      <Trans>Loading graph</Trans>
+                    </div>
+                  }
+                >
+                  <LazyGraphPanel activeDocName={docName} />
+                </Suspense>
+              )}
+              {effectiveTab === 'timeline' && <TimelineContent docName={docName} />}
+              {effectiveTab === 'comments' && <CommentsTab docName={docName} />}
+              {effectiveTab === 'problems' && (
+                <ProblemsPanel
+                  docName={docName}
+                  diagnostics={diagnostics}
+                  linkFindingsStatus={linkFindingsState.status}
+                  onFix={lintProvider !== null ? handleFix : undefined}
+                  onAutoFix={lintProvider !== null ? handleAutoFix : undefined}
+                  onAskAi={
+                    lintProvider !== null && terminalLaunch !== null ? handleAskAi : undefined
+                  }
+                  onFixWithAi={terminalLaunch !== null ? handleFixWithAi : undefined}
+                />
+              )}
+            </>
           )}
         </div>
       ) : (
